@@ -22,14 +22,13 @@ exactly what your accountant needs.
 
 ## Environment variables
 
-Set these in Vercel → Project → Settings → Environment Variables.
+Set these in Vercel → Project → Settings → Environment Variables, then redeploy.
 
 | Name | Value |
 | --- | --- |
-| `NEXT_PUBLIC_SUPABASE_URL` | `https://hgappljfpkqhsnrruzvv.supabase.co` |
-| `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Supabase → Project Settings → API Keys → publishable key |
 | `ANTHROPIC_API_KEY` | From [console.anthropic.com](https://console.anthropic.com/) |
 | `COMPANY_NAME` | Optional. Lets Claude recognise sales invoices you issue (filed as *Income*) |
+| `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Optional. Default to this project's public values (`src/lib/supabase/config.ts`) |
 
 Without `ANTHROPIC_API_KEY` everything still works; documents are saved and
 you fill in the details yourself.
