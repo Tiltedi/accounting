@@ -1,7 +1,8 @@
 "use client";
 
 import { memo } from "react";
-import { Download, FileText, Image as ImageIcon } from "lucide-react";
+import { CircleCheck, Download, FileText, Image as ImageIcon, Landmark } from "lucide-react";
+import type { Transaction } from "@/lib/bank";
 import { isImage, type Doc } from "@/lib/documents";
 import { formatDay, formatMoney, formatMonth, formatShortDay, totalsByCurrency } from "@/lib/format";
 
@@ -9,12 +10,13 @@ type Props = {
   docs: Doc[];
   selected: Set<string>;
   reading: Set<string>;
+  paid: Map<string, Transaction>;
   onToggle: (id: string) => void;
   onOpen: (id: string) => void;
   onDownload: (doc: Doc) => void;
 };
 
-export function DocumentList({ docs, selected, reading, onToggle, onOpen, onDownload }: Props) {
+export function DocumentList({ docs, selected, reading, paid, onToggle, onOpen, onDownload }: Props) {
   const groups: { month: string; docs: Doc[] }[] = [];
   for (const doc of docs) {
     const month = doc.doc_date.slice(0, 7);
@@ -35,6 +37,7 @@ export function DocumentList({ docs, selected, reading, onToggle, onOpen, onDown
                 doc={doc}
                 checked={selected.has(doc.id)}
                 reading={reading.has(doc.id) || doc.status === "processing"}
+                paid={paid.has(doc.id)}
                 onToggle={onToggle}
                 onOpen={onOpen}
                 onDownload={onDownload}
@@ -64,6 +67,7 @@ const Row = memo(function Row({
   doc,
   checked,
   reading,
+  paid,
   onToggle,
   onOpen,
   onDownload,
@@ -71,6 +75,7 @@ const Row = memo(function Row({
   doc: Doc;
   checked: boolean;
   reading: boolean;
+  paid: boolean;
   onToggle: (id: string) => void;
   onOpen: (id: string) => void;
   onDownload: (doc: Doc) => void;
@@ -115,6 +120,8 @@ const Row = memo(function Row({
                 <span className="sm:hidden" aria-hidden="true">·</span>
                 <span className="shrink-0">{doc.category}</span>
                 {doc.status === "failed" && <span className="shrink-0 text-warn">· Not read</span>}
+                {doc.booked_at && <CircleCheck className="size-3.5 shrink-0 text-accent" aria-label="Booked" />}
+                {paid && <Landmark className="size-3.5 shrink-0 text-muted" aria-label="Paid" />}
                 {doc.description && <span className="hidden truncate sm:inline">· {doc.description}</span>}
               </>
             )}

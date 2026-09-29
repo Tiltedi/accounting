@@ -10,6 +10,15 @@ exactly what your accountant needs.
 - **Find** anything with the date range picker, category filter and search.
 - **Download** one file, a selection, or everything in view as a ZIP with a
   `Summary.xlsx` listing every document.
+- **Bank check** (no bank connection): import the CSV statement from your
+  bank's website. Payments are matched to receipts; you see which payments
+  lack a receipt, which receipts have no payment, and can mark lines that
+  need none (fees, transfers). Re-importing overlapping statements never
+  duplicates lines.
+- **Booked in accounting**: tick documents once they're in your accounting
+  tool; filter by *Not booked*; after a download the app offers to mark them.
+- **Reading cost**: each document stores what Claude charged; the monthly
+  total is in the account menu.
 - Installable on your phone's home screen. Works in light and dark mode.
 
 ## Stack
@@ -47,9 +56,20 @@ insert into private.members (email) values ('name@example.com');
 
 Remove the row to revoke access.
 
+## Bank statements
+
+Any CSV export works. Common layouts (ING, Rabobank, bunq, Revolut, most
+English/Dutch/Italian/German headers) are recognised directly; for anything
+else Claude reads the first rows once to map the columns, and the file is
+then parsed in the browser. Only unambiguous matches are linked
+automatically (exact amount plus the vendor's name, or a unique amount paid
+within a week); the rest wait under *To check*.
+
 ## Data
 
 - Table `public.documents`: one row per document, with row-level security.
+- Table `public.bank_transactions`: imported statement lines, linked to a
+  document when matched.
 - Bucket `documents` (private, 25 MB per file): the files. Downloads use your
   session or short-lived signed links.
 - The schema lives in `supabase/migrations/`.

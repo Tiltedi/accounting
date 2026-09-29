@@ -54,7 +54,23 @@ export function canExtract(mimeType: string) {
 
 export class ExtractionError extends Error {}
 
-export async function extractDocument({ data, mimeType, fileName }: ExtractInput): Promise<Extraction> {
+// Claude Opus 5.5 list prices, USD per million tokens.
+const PRICE = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 };
+
+function costUsd(usage: Anthropic.Beta.BetaUsage) {
+  const cost =
+    usage.input_tokens * PRICE.input +
+    usage.output_tokens * PRICE.output +
+    (usage.cache_creation_input_tokens ?? 0) * PRICE.cacheWrite +
+    (usage.cache_read_input_tokens ?? 0) * PRICE.cacheRead;
+  return Math.round(cost) / 1_000_000;
+}
+
+export async function extractDocument({
+  data,
+  mimeType,
+  fileName,
+}: ExtractInput): Promise<{ result: Extraction; costUsd: number }> {
   const client = new Anthropic({ timeout: 55_000, maxRetries: 1 });
   const base64 = data.toString("base64");
 
@@ -84,7 +100,7 @@ export async function extractDocument({ data, mimeType, fileName }: ExtractInput
   if (!response.parsed_output) {
     throw new ExtractionError("No details found in the document.");
   }
-  return clean(response.parsed_output);
+  return { result: clean(response.parsed_output), costUsd: costUsd(response.usage) };
 }
 
 function clean(raw: Extraction): Extraction {

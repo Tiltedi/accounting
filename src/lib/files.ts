@@ -103,11 +103,26 @@ export async function sha256Hex(blob: Blob) {
   return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
+// Browsers can drop a download name with non-ASCII characters and save the
+// file as "download", so transliterate: "Café – Größe" → "Cafe - Grosse".
+export function asciiFileName(name: string) {
+  return (
+    name
+      .replace(/ß/g, "ss")
+      .normalize("NFKD")
+      .replace(/[\u0300-\u036f]/g, "")
+      .replace(/[\u2010-\u2015\u00b7\u2022]/g, "-")
+      .replace(/[^\x20-\x7e]/g, "")
+      .replace(/\s+/g, " ")
+      .trim() || "document"
+  );
+}
+
 export function saveBlob(blob: Blob, name: string) {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
   a.href = url;
-  a.download = name;
+  a.download = asciiFileName(name);
   document.body.appendChild(a);
   a.click();
   a.remove();

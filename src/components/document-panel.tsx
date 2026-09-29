@@ -7,7 +7,8 @@ import { toast } from "@/components/toaster";
 import { CATEGORIES, DOC_TYPES } from "@/lib/categories";
 import { BUCKET, DOC_COLUMNS, isImage, isPdf, type Client, type Doc, type DocUpdate } from "@/lib/documents";
 import { downloadOne } from "@/lib/export";
-import { formatBytes, parseAmount } from "@/lib/format";
+import type { Transaction } from "@/lib/bank";
+import { formatBytes, formatDay, formatMoney, parseAmount } from "@/lib/format";
 import { useMediaQuery } from "@/lib/use-media-query";
 
 const CURRENCIES = ["EUR", "USD", "GBP", "CHF", "SEK", "NOK", "DKK", "PLN", "CZK", "HUF", "RON", "CAD", "AUD", "JPY"];
@@ -16,6 +17,7 @@ type Props = {
   supabase: Client;
   doc: Doc | null;
   reading: boolean;
+  payment?: Transaction | null;
   onClose: () => void;
   onSaved: (doc: Doc) => void;
   onDeleted: (id: string) => void;
@@ -51,7 +53,7 @@ function toForm(doc: Doc): Form {
   };
 }
 
-function PanelBody({ supabase, doc, reading, onClose, onSaved, onDeleted, onRead }: Omit<Props, "doc"> & { doc: Doc }) {
+function PanelBody({ supabase, doc, reading, payment, onClose, onSaved, onDeleted, onRead }: Omit<Props, "doc"> & { doc: Doc }) {
   const initial = toForm(doc);
   const [form, setForm] = useState<Form>(initial);
   const [busy, setBusy] = useState<"save" | "delete" | "download" | null>(null);
@@ -104,6 +106,24 @@ function PanelBody({ supabase, doc, reading, onClose, onSaved, onDeleted, onRead
     toast("Saved");
   }
 
+  const [booked, setBooked] = useState(Boolean(doc.booked_at));
+
+  async function toggleBooked() {
+    const next = !booked;
+    setBooked(next);
+    const { data, error } = await supabase
+      .from("documents")
+      .update({ booked_at: next ? new Date().toISOString() : null })
+      .eq("id", doc.id)
+      .select(DOC_COLUMNS)
+      .single();
+    if (error) {
+      setBooked(!next);
+      return toast(error.message, { tone: "error" });
+    }
+    onSaved(data as Doc);
+  }
+
   async function remove() {
     if (!window.confirm(`Delete “${doc.vendor || doc.file_name}”? This cannot be undone.`)) return;
     setBusy("delete");
@@ -148,6 +168,25 @@ function PanelBody({ supabase, doc, reading, onClose, onSaved, onDeleted, onRead
             </button>
           </Banner>
         )}
+
+        <div className="mx-5 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
+          <label className="flex cursor-pointer items-center gap-2 font-medium">
+            <input
+              type="checkbox"
+              checked={booked}
+              onChange={toggleBooked}
+              className="size-[1.1rem] cursor-pointer accent-(--color-accent)"
+            />
+            Booked in accounting
+          </label>
+          {payment !== undefined && (
+            <span className={payment ? "text-accent" : "text-muted"}>
+              {payment
+                ? `Paid ${formatDay(payment.booked_on)} · ${formatMoney(Math.abs(payment.amount), payment.currency)}`
+                : "No bank payment linked"}
+            </span>
+          )}
+        </div>
 
         <form id="doc-form" onSubmit={save} className="grid grid-cols-2 gap-x-3 gap-y-4 px-5 py-5">
           <fieldset disabled={processing} className="contents">

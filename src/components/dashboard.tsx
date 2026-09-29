@@ -8,12 +8,14 @@ import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentList } from "@/components/document-list";
 import { DocumentPanel } from "@/components/document-panel";
 import { FileButton } from "@/components/file-button";
+import { AppHeader } from "@/components/app-header";
 import { Logo } from "@/components/logo";
 import { ScanDialog } from "@/components/scan-dialog";
 import { toast } from "@/components/toaster";
 import { CATEGORIES } from "@/lib/categories";
 import { ALL_TIME, inRange, rangeLabel, todayISO, type DateRange } from "@/lib/dates";
-import { compareDocs, fetchAllDocuments, type Doc } from "@/lib/documents";
+import type { Transaction } from "@/lib/bank";
+import { DOC_COLUMNS, compareDocs, fetchAllDocuments, type Doc } from "@/lib/documents";
 import { downloadOne, downloadZip } from "@/lib/export";
 import { createLimiter, imageToJpeg, jpegsToPdf, type ScanPage } from "@/lib/files";
 import { formatBytes, formatMoney, totalsByCurrency } from "@/lib/format";
@@ -44,7 +46,16 @@ function errorMessage(err: unknown) {
 
 let warnedNotConfigured = false;
 
-export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: string }) {
+type StatusFilter = "" | "unbooked" | "booked" | "unpaid";
+
+function matchesStatus(doc: Doc, status: StatusFilter, payments: Map<string, Transaction>) {
+  if (status === "booked") return Boolean(doc.booked_at);
+  if (status === "unbooked") return !doc.booked_at;
+  if (status === "unpaid") return !payments.has(doc.id);
+  return true;
+}
+
+export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc[]; initialTxs: Transaction[]; email: string }) {
   const router = useRouter();
   const [supabase] = useState(createClient);
   const [uploadLimit] = useState(() => createLimiter(3));
@@ -53,6 +64,8 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
   const [docs, setDocs] = useState(initialDocs);
   const [range, setRange] = useState<DateRange>(ALL_TIME);
   const [category, setCategory] = useState("");
+  const [status, setStatus] = useState<StatusFilter>("");
+  const [payments] = useState(() => new Map(initialTxs.filter((t) => t.document_id).map((t) => [t.document_id!, t])));
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -73,15 +86,19 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
     return docs.filter(
-      (d) => inRange(d.doc_date, range) && (!category || d.category === category) && (!q || searchText(d).includes(q)),
+      (d) =>
+        inRange(d.doc_date, range) &&
+        (!category || d.category === category) &&
+        matchesStatus(d, status, payments) &&
+        (!q || searchText(d).includes(q)),
     );
-  }, [docs, range, category, deferredQuery]);
+  }, [docs, range, category, status, payments, deferredQuery]);
 
   const selectedDocs = useMemo(() => filtered.filter((d) => selected.has(d.id)), [filtered, selected]);
   const scope = selectedDocs.length ? selectedDocs : filtered;
   const totals = useMemo(() => totalsByCurrency(scope), [scope]);
   const openDoc = openId ? (docs.find((d) => d.id === openId) ?? null) : null;
-  const filtersActive = range !== ALL_TIME || category !== "" || query !== "";
+  const filtersActive = range !== ALL_TIME || category !== "" || status !== "" || query !== "";
 
   const upsert = useCallback((doc: Doc) => {
     setDocs((prev) => [...prev.filter((d) => d.id !== doc.id), doc].sort(compareDocs));
@@ -203,12 +220,32 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
           ? `Documents ${todayISO()}`
           : ["Documents", rangeLabel(range), category].filter(Boolean).join(" – ");
         await downloadZip(supabase, list, name, (done, total) => setZipping(`${done}/${total}`));
+        const unbooked = list.filter((d) => !d.booked_at);
+        if (unbooked.length) {
+          toast(`Mark ${unbooked.length} as booked in accounting?`, {
+            duration: 12000,
+            action: { label: "Mark booked", onClick: () => void setBooked(unbooked, true) },
+          });
+        }
       }
     } catch (err) {
       toast(errorMessage(err), { tone: "error" });
     } finally {
       setZipping(null);
     }
+  }
+
+  async function setBooked(list: Doc[], booked: boolean) {
+    const ids = list.map((d) => d.id);
+    const { data, error } = await supabase
+      .from("documents")
+      .update({ booked_at: booked ? new Date().toISOString() : null })
+      .in("id", ids)
+      .select(DOC_COLUMNS);
+    if (error) return toast(error.message, { tone: "error" });
+    const updated = new Map((data as Doc[]).map((d) => [d.id, d]));
+    setDocs((prev) => prev.map((d) => updated.get(d.id) ?? d));
+    toast(booked ? `Marked ${ids.length} as booked` : `Marked ${ids.length} as not booked`);
   }
 
   const downloadRow = useCallback(
@@ -326,37 +363,24 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
 
   return (
     <div className="min-h-dvh">
-      <header className="sticky top-0 z-30 border-b border-rule bg-paper/90 backdrop-blur-md">
-        <div className="mx-auto flex h-16 max-w-5xl items-center gap-2 px-4 sm:px-6">
-          <Logo className="size-8" />
-          <span className="text-[1.05rem] font-semibold tracking-tight">Accounting</span>
-          <div className="flex-1" />
-          <FileButton
-            accept="image/*"
-            capture
-            onFiles={(files) => addPhoto(files[0])}
-            className="hidden h-10 items-center gap-2 rounded-full border border-rule-strong px-4 text-sm font-semibold hover:bg-ink/5 sm:pointer-coarse:flex"
-          >
-            <Camera className="size-4" /> Scan
-          </FileButton>
-          <FileButton
-            accept={ACCEPT}
-            multiple
-            onFiles={addPickedFiles}
-            className="hidden h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover sm:flex"
-          >
-            <Upload className="size-4" /> Upload
-          </FileButton>
-          <button
-            type="button"
-            onClick={() => setDialog("account")}
-            aria-label="Account"
-            className="ml-1 grid size-10 place-items-center rounded-full bg-ink/[0.06] text-sm font-semibold uppercase hover:bg-ink/10"
-          >
-            {email.slice(0, 1) || "?"}
-          </button>
-        </div>
-      </header>
+      <AppHeader active="/" email={email} onAccount={() => setDialog("account")}>
+        <FileButton
+          accept="image/*"
+          capture
+          onFiles={(files) => addPhoto(files[0])}
+          className="hidden h-10 items-center gap-2 rounded-full border border-rule-strong px-4 text-sm font-semibold hover:bg-ink/5 sm:pointer-coarse:flex"
+        >
+          <Camera className="size-4" /> Scan
+        </FileButton>
+        <FileButton
+          accept={ACCEPT}
+          multiple
+          onFiles={addPickedFiles}
+          className="hidden h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover sm:flex"
+        >
+          <Upload className="size-4" /> Upload
+        </FileButton>
+      </AppHeader>
 
       <main className="mx-auto max-w-5xl px-4 pt-4 pb-36 sm:px-6 sm:pt-6 sm:pb-20">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -389,7 +413,7 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
               </kbd>
             )}
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2 sm:flex-nowrap">
             <button
               type="button"
               onClick={() => setDialog("dates")}
@@ -420,6 +444,25 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
               </select>
               <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
             </div>
+            <div className="relative min-w-0 basis-full sm:basis-auto">
+              <select
+                value={status}
+                onChange={(e) => {
+                  setStatus(e.target.value as StatusFilter);
+                  setLimit(PAGE_SIZE);
+                }}
+                aria-label="Status"
+                className={`h-11 w-full appearance-none rounded-full border py-0 pr-9 pl-4 text-[0.95rem] font-medium outline-none transition focus:ring-4 focus:ring-accent/15 sm:w-auto ${
+                  status ? "border-accent bg-accent-soft text-accent" : "border-rule-strong bg-card hover:bg-ink/5"
+                }`}
+              >
+                <option value="">Any status</option>
+                <option value="unbooked">Not booked</option>
+                <option value="booked">Booked</option>
+                <option value="unpaid">No bank payment</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
+            </div>
           </div>
         </div>
 
@@ -442,9 +485,18 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
                 <span className="nums truncate text-muted">{totals.map((t) => formatMoney(t.total, t.currency)).join(" · ")}</span>
               )}
               {selectedDocs.length > 0 && (
-                <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-accent hover:underline">
-                  Clear
-                </button>
+                <>
+                  <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-accent hover:underline">
+                    Clear
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => void setBooked(selectedDocs, !selectedDocs.every((d) => d.booked_at))}
+                    className="font-medium text-accent hover:underline"
+                  >
+                    {selectedDocs.every((d) => d.booked_at) ? "Mark not booked" : "Mark booked"}
+                  </button>
+                </>
               )}
             </div>
             <button
@@ -477,6 +529,7 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
                 onClick={() => {
                   setRange(ALL_TIME);
                   setCategory("");
+                  setStatus("");
                   setQuery("");
                 }}
                 className="mt-2 text-sm font-semibold text-accent hover:underline"
@@ -491,6 +544,7 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
               docs={filtered.slice(0, limit)}
               selected={selected}
               reading={reading}
+              paid={payments}
               onToggle={toggle}
               onOpen={setOpenId}
               onDownload={downloadRow}
@@ -548,7 +602,7 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
           setLimit(PAGE_SIZE);
         }}
       />
-      <AccountDialog open={dialog === "account"} email={email} supabase={supabase} onClose={() => setDialog(null)} />
+      <AccountDialog open={dialog === "account"} email={email} supabase={supabase} docs={docs} onClose={() => setDialog(null)} />
       <ScanDialog
         open={scanOpen}
         pages={scanPages}
@@ -561,6 +615,7 @@ export function Dashboard({ initialDocs, email }: { initialDocs: Doc[]; email: s
       <DocumentPanel
         supabase={supabase}
         doc={openDoc}
+        payment={openDoc ? (payments.get(openDoc.id) ?? null) : null}
         reading={openDoc ? reading.has(openDoc.id) : false}
         onClose={() => setOpenId(null)}
         onSaved={upsert}

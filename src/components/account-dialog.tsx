@@ -5,17 +5,19 @@ import { useState, type FormEvent } from "react";
 import { LoaderCircle, LogOut } from "lucide-react";
 import { Dialog, DialogHeader } from "@/components/dialog";
 import { toast } from "@/components/toaster";
-import type { Client } from "@/lib/documents";
+import type { Client, Doc } from "@/lib/documents";
 
 export function AccountDialog({
   open,
   email,
   supabase,
+  docs = [],
   onClose,
 }: {
   open: boolean;
   email: string;
   supabase: Client;
+  docs?: Doc[];
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -51,6 +53,8 @@ export function AccountDialog({
           <div className="mt-0.5 truncate font-medium">{email}</div>
         </div>
 
+        <ReadingCost docs={docs} />
+
         <form onSubmit={changePassword} className="space-y-2">
           <label className="block">
             <span className="mb-1 block text-xs font-medium tracking-wide text-muted">New password</span>
@@ -84,5 +88,33 @@ export function AccountDialog({
         </button>
       </div>
     </Dialog>
+  );
+}
+
+// What automatic reading has cost, from each read's token usage.
+function ReadingCost({ docs }: { docs: Doc[] }) {
+  const month = new Date().toISOString().slice(0, 7);
+  let monthCost = 0;
+  let monthCount = 0;
+  let allCost = 0;
+  for (const d of docs) {
+    if (d.ai_cost_usd == null) continue;
+    allCost += d.ai_cost_usd;
+    if (d.created_at.slice(0, 7) === month) {
+      monthCost += d.ai_cost_usd;
+      monthCount++;
+    }
+  }
+  const usd = (n: number) => `$${n.toFixed(n < 1 ? 3 : 2)}`;
+  return (
+    <div>
+      <div className="text-xs font-medium tracking-wide text-muted">Reading cost this month</div>
+      <div className="mt-0.5 flex items-baseline gap-2">
+        <span className="nums font-medium">{usd(monthCost)}</span>
+        <span className="text-sm text-muted">
+          {monthCount} {monthCount === 1 ? "document" : "documents"} · {usd(allCost)} in total
+        </span>
+      </div>
+    </div>
   );
 }

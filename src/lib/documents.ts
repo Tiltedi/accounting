@@ -2,7 +2,7 @@ import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Database } from "@/lib/database.types";
 
 export const DOC_COLUMNS =
-  "id,created_at,status,file_path,file_name,mime_type,size_bytes,doc_date,vendor,description,category,doc_type,invoice_number,total,tax,currency,notes" as const;
+  "id,created_at,status,file_path,file_name,mime_type,size_bytes,doc_date,vendor,description,category,doc_type,invoice_number,total,tax,currency,notes,booked_at,ai_cost_usd" as const;
 
 type Row = Database["public"]["Tables"]["documents"]["Row"];
 
@@ -24,6 +24,8 @@ export type Doc = Pick<
   | "tax"
   | "currency"
   | "notes"
+  | "booked_at"
+  | "ai_cost_usd"
 > & { status: "processing" | "ready" | "failed" };
 
 export type DocUpdate = Partial<
@@ -39,6 +41,7 @@ export type DocUpdate = Partial<
     | "tax"
     | "currency"
     | "notes"
+    | "booked_at"
   >
 >;
 

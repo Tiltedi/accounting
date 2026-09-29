@@ -27,7 +27,7 @@ export async function POST(request: Request) {
   if (error) return Response.json({ error: error.message }, { status: 500 });
   if (!doc) return Response.json({ error: "Document not found" }, { status: 404 });
 
-  const save = async (update: DocUpdate & { status: Doc["status"]; extraction?: Json }) => {
+  const save = async (update: DocUpdate & { status: Doc["status"]; extraction?: Json; ai_cost_usd?: number }) => {
     const { data, error } = await supabase
       .from("documents")
       .update(update)
@@ -49,7 +49,7 @@ export async function POST(request: Request) {
     const { data: file, error: downloadError } = await supabase.storage.from(BUCKET).download(doc.file_path);
     if (downloadError) throw downloadError;
 
-    const result = await extractDocument({
+    const { result, costUsd } = await extractDocument({
       data: Buffer.from(await file.arrayBuffer()),
       mimeType: doc.mime_type,
       fileName: doc.file_name,
@@ -67,6 +67,7 @@ export async function POST(request: Request) {
       tax: result.tax,
       currency: result.currency,
       extraction: result,
+      ai_cost_usd: costUsd,
     });
     return Response.json({ doc: updated });
   } catch (err) {

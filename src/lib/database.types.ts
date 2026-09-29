@@ -16,8 +16,58 @@ export type Database = {
   }
   public: {
     Tables: {
+      bank_transactions: {
+        Row: {
+          account: string | null
+          amount: number
+          booked_on: string
+          counterparty: string | null
+          created_at: string
+          currency: string
+          description: string | null
+          document_id: string | null
+          fingerprint: string
+          id: string
+          import_id: string
+          matched_by: string | null
+          status: string
+        }
+        Insert: {
+          account?: string | null
+          amount: number
+          booked_on: string
+          counterparty?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          document_id?: string | null
+          fingerprint: string
+          id?: string
+          import_id: string
+          matched_by?: string | null
+          status?: string
+        }
+        Update: {
+          account?: string | null
+          amount?: number
+          booked_on?: string
+          counterparty?: string | null
+          created_at?: string
+          currency?: string
+          description?: string | null
+          document_id?: string | null
+          fingerprint?: string
+          id?: string
+          import_id?: string
+          matched_by?: string | null
+          status?: string
+        }
+        Relationships: []
+      }
       documents: {
         Row: {
+          ai_cost_usd: number | null
+          booked_at: string | null
           category: string
           created_at: string
           created_by: string | null
@@ -41,6 +91,8 @@ export type Database = {
           vendor: string | null
         }
         Insert: {
+          ai_cost_usd?: number | null
+          booked_at?: string | null
           category?: string
           created_at?: string
           created_by?: string | null
@@ -64,6 +116,8 @@ export type Database = {
           vendor?: string | null
         }
         Update: {
+          ai_cost_usd?: number | null
+          booked_at?: string | null
           category?: string
           created_at?: string
           created_by?: string | null
