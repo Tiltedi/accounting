@@ -861,15 +861,9 @@ function TxList({
                           </span>
                         ) : (
                           tx.amount < 0 && (
-                            <button
-                              type="button"
-                              onClick={() => onBilling({ pattern: tx.counterparty || "", url: "" })}
-                              aria-label="Add billing page"
-                              title="Add billing page"
-                              className="grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
-                            >
-                              <Globe className="size-4" />
-                            </button>
+                            <SmallButton onClick={() => onBilling({ pattern: tx.counterparty || "", url: "" })} label="Add billing page">
+                              <Globe className="size-3.5" /> Add billing page
+                            </SmallButton>
                           )
                         )}
                       </>
