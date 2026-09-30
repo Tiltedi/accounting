@@ -47,6 +47,7 @@ export type Database = {
         Row: {
           account: string | null
           amount: number
+          bank_ref: string | null
           booked_on: string
           counterparty: string | null
           created_at: string
@@ -65,6 +66,7 @@ export type Database = {
         Insert: {
           account?: string | null
           amount: number
+          bank_ref?: string | null
           booked_on: string
           counterparty?: string | null
           created_at?: string
@@ -83,6 +85,7 @@ export type Database = {
         Update: {
           account?: string | null
           amount?: number
+          bank_ref?: string | null
           booked_on?: string
           counterparty?: string | null
           created_at?: string

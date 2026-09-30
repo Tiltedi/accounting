@@ -126,6 +126,7 @@ async function saveCardLines(supabase: Client, statementId: string, result: Stat
     currency,
     counterparty: line.merchant || null,
     description: line.details,
+    bank_ref: null,
   }));
   const prints = await fingerprints(parsed);
   const rules = await fetchRules(supabase);

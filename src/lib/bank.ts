@@ -182,6 +182,7 @@ export type Mapping = {
   description: number | null;
   account: number | null;
   currency: number | null;
+  entry?: number | null; // the bank's own id per line, e.g. ING's entry number
   dateFormat: DateFormat;
 };
 
@@ -196,6 +197,7 @@ const HEADERS = {
   description: ["omschrijving-1", "omschrijving", "mededelingen", "description", "descrizione", "causale", "details", "reference", "memo", "verwendungszweck"],
   account: ["iban/bban", "rekening", "rekeningnummer", "account", "iban", "conto"],
   currency: ["munt", "muntsoort", "currency", "valuta", "währung"],
+  entry: ["entry number", "omzetnummer", "numéro de mouvement", "numero de mouvement", "transaction id", "transactie-id", "transactie id"],
 };
 
 function norm(header: string) {
@@ -226,6 +228,7 @@ export function guessMapping(rows: string[][]): Mapping | null {
       if (i !== null) taken.add(i);
       return i;
     };
+    const entry = pick(HEADERS.entry);
     const date = pick(HEADERS.date);
     const sign = pick(HEADERS.sign);
     const amount = pick(HEADERS.amount);
@@ -238,7 +241,7 @@ export function guessMapping(rows: string[][]): Mapping | null {
     const currency = pick(HEADERS.currency);
     const dateFormat = detectDateFormat(rows.slice(headerRow + 1).map((r) => r[date] ?? ""));
     if (!dateFormat) continue;
-    return { headerRow, date, amount, debit, credit, sign, counterparty, description, account, currency, dateFormat };
+    return { headerRow, date, amount, debit, credit, sign, counterparty, description, account, currency, entry, dateFormat };
   }
   return null;
 }
@@ -280,6 +283,7 @@ export type ParsedTransaction = {
   currency: string;
   counterparty: string | null;
   description: string | null;
+  bank_ref: string | null;
 };
 
 const OUTGOING = /^(af|d|db|debit|debet|uit|out|-|addebito|s|soll)$/i;
@@ -331,24 +335,42 @@ export function applyMapping(rows: string[][], mapping: Mapping): ParsedTransact
       currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
       counterparty: counterparty || null,
       description: description.slice(0, 500) || null,
+      bank_ref: cell(row, mapping.entry ?? null) || null,
     });
   }
   return out;
 }
 
-// Same line in two overlapping exports → same fingerprint. Identical lines
-// within one export (two coffees on one day) are told apart by their order.
+// Same line in two overlapping exports → same fingerprint. With the bank's
+// own id per line (ING's entry number) the fingerprint rests on that alone, so
+// it holds however descriptions are read.
 export async function fingerprints(txs: ParsedTransaction[]) {
+  const legacy = await legacyFingerprints(txs);
+  return Promise.all(
+    txs.map((tx, i) =>
+      tx.bank_ref ? sha256([ "ref", tx.account ?? "", tx.booked_on, tx.amount.toFixed(2), tx.bank_ref].join("|").toLowerCase()) : legacy[i],
+    ),
+  );
+}
+
+// Built from the parsed details; identical lines within one export (two
+// coffees on one day) are told apart by their order. Lines imported before
+// bank ids were read carry this fingerprint.
+export async function legacyFingerprints(txs: ParsedTransaction[]) {
   const seen = new Map<string, number>();
   return Promise.all(
-    txs.map(async (tx) => {
+    txs.map((tx) => {
       const base = [tx.account ?? "", tx.booked_on, tx.amount.toFixed(2), tx.currency, tx.counterparty ?? "", tx.description ?? ""].join("|").toLowerCase();
       const n = seen.get(base) ?? 0;
       seen.set(base, n + 1);
-      const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(`${base}|${n}`));
-      return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
+      return sha256(`${base}|${n}`);
     }),
   );
+}
+
+async function sha256(text: string) {
+  const digest = await crypto.subtle.digest("SHA-256", new TextEncoder().encode(text));
+  return Array.from(new Uint8Array(digest), (b) => b.toString(16).padStart(2, "0")).join("");
 }
 
 // ----- Matching -----------------------------------------------------------------

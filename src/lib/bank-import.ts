@@ -3,9 +3,11 @@ import {
   applyMapping,
   fingerprints,
   guessMapping,
+  legacyFingerprints,
   parseCsv,
   ruleFor,
   type Mapping,
+  type ParsedTransaction,
   type Match,
   type Rule,
   type Source,
@@ -46,8 +48,11 @@ export async function importStatement(supabase: Client, file: File, source: Sour
   if (!parsed.length) throw new Error("No transactions found in this file.");
 
   const prints = await fingerprints(parsed);
+  const known = await importedBefore(supabase, parsed, prints);
   const importId = crypto.randomUUID();
-  const records = parsed.map((tx, i) => ({ ...tx, source, import_id: importId, fingerprint: prints[i] }));
+  const records = parsed
+    .map((tx, i) => ({ ...tx, source, import_id: importId, fingerprint: prints[i] }))
+    .filter((_, i) => !known.has(i));
 
   const added: Transaction[] = [];
   for (let i = 0; i < records.length; i += 500) {
@@ -58,7 +63,26 @@ export async function importStatement(supabase: Client, file: File, source: Sour
     if (error) throw error;
     added.push(...(data as Transaction[]));
   }
-  return { added, skipped: records.length - added.length };
+  return { added, skipped: parsed.length - added.length };
+}
+
+// Lines stored before bank ids were read have the older fingerprint: find
+// them too, so switching fingerprints never duplicates a line.
+async function importedBefore(supabase: Client, parsed: ParsedTransaction[], prints: string[]) {
+  const legacy = await legacyFingerprints(parsed);
+  const candidates = legacy.flatMap((fp, i) => (fp !== prints[i] ? [{ fp, i }] : []));
+  const known = new Set<number>();
+  for (let start = 0; start < candidates.length; start += 200) {
+    const chunk = candidates.slice(start, start + 200);
+    const { data, error } = await supabase
+      .from("bank_transactions")
+      .select("fingerprint")
+      .in("fingerprint", chunk.map((c) => c.fp));
+    if (error) throw error;
+    const found = new Set(data.map((r) => r.fingerprint));
+    for (const c of chunk) if (found.has(c.fp)) known.add(c.i);
+  }
+  return known;
 }
 
 export async function linkTransaction(
