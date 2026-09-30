@@ -25,6 +25,9 @@ exactly what your accountant needs.
 - **Rules**: lines from payees that never need a receipt (bank fees, salary,
   rent, suppliers that e-invoice via Peppol) are marked on import. Add one
   from any line with *Always for …*, remove it under *No receipt needed*.
+- **Billing pages**: save a supplier's billing-portal link once (globe icon
+  on a line); lines missing a receipt then link straight to it, and the
+  *Missing receipt* tab lists every portal to visit.
 - **Booked in accounting**: tick documents once they're in your accounting
   tool; filter by *Not booked*; after a download the app offers to mark them.
 - **Reading cost**: each document stores what Claude charged; the monthly
@@ -82,6 +85,7 @@ paid within a week) can be approved all at once.
   or card), linked to a document when matched. Card lines point to their
   statement document and are deleted with it.
 - Table `public.bank_rules`: payees or descriptions that need no receipt.
+- Table `public.vendor_links`: billing-portal links, matched to lines by name.
 - Bucket `documents` (private, 25 MB per file): the files. Downloads use your
   session or short-lived signed links.
 - The schema lives in `supabase/migrations/`.

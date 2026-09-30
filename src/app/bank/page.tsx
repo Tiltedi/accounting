@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { redirect } from "next/navigation";
 import { BankView } from "@/components/bank-view";
-import { fetchAllTransactions, fetchRules } from "@/lib/bank";
+import { fetchAllTransactions, fetchRules, fetchVendorLinks } from "@/lib/bank";
 import { fetchAllDocuments } from "@/lib/documents";
 import { createClient } from "@/lib/supabase/server";
 
@@ -12,6 +12,21 @@ export default async function BankPage({ searchParams }: { searchParams: Promise
   const { data } = await supabase.auth.getClaims();
   if (!data?.claims) redirect("/login");
 
-  const [docs, txs, rules] = await Promise.all([fetchAllDocuments(supabase), fetchAllTransactions(supabase), fetchRules(supabase)]);
-  return <BankView source="bank" initialDocs={docs} initialTxs={txs} initialRules={rules} initialTab={(await searchParams).tab} email={String(data.claims.email ?? "")} />;
+  const [docs, txs, rules, links] = await Promise.all([
+    fetchAllDocuments(supabase),
+    fetchAllTransactions(supabase),
+    fetchRules(supabase),
+    fetchVendorLinks(supabase),
+  ]);
+  return (
+    <BankView
+      source="bank"
+      initialDocs={docs}
+      initialTxs={txs}
+      initialRules={rules}
+      initialLinks={links}
+      initialTab={(await searchParams).tab}
+      email={String(data.claims.email ?? "")}
+    />
+  );
 }

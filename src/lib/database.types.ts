@@ -193,6 +193,27 @@ export type Database = {
         }
         Relationships: []
       }
+      vendor_links: {
+        Row: {
+          created_at: string
+          id: string
+          pattern: string
+          url: string
+        }
+        Insert: {
+          created_at?: string
+          id?: string
+          pattern: string
+          url: string
+        }
+        Update: {
+          created_at?: string
+          id?: string
+          pattern?: string
+          url?: string
+        }
+        Relationships: []
+      }
     }
     Views: {
       [_ in never]: never

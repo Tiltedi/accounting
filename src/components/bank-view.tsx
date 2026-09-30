@@ -8,9 +8,12 @@ import {
   Check,
   ChevronDown,
   CreditCard,
+  ExternalLink,
   FileSpreadsheet,
   FileText,
+  Globe,
   Landmark,
+  Pencil,
   Link2,
   LoaderCircle,
   Search,
@@ -21,11 +24,25 @@ import {
 import { AccountDialog } from "@/components/account-dialog";
 import { AppHeader } from "@/components/app-header";
 import { AttachDialog } from "@/components/attach-dialog";
+import { BillingDialog, type BillingDraft } from "@/components/billing-dialog";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentPanel } from "@/components/document-panel";
 import { FileButton } from "@/components/file-button";
 import { toast } from "@/components/toaster";
-import { findMatches, loadDismissed, ruleFor, saveDismissed, RULE_COLUMNS, type Match, type Rule, type Source, type Transaction } from "@/lib/bank";
+import {
+  findMatches,
+  linkFor,
+  loadDismissed,
+  ruleFor,
+  saveDismissed,
+  LINK_COLUMNS,
+  RULE_COLUMNS,
+  type Match,
+  type Rule,
+  type Source,
+  type Transaction,
+  type VendorLink,
+} from "@/lib/bank";
 import { applyRules, approveMatches, importStatement, linkTransaction, readCardStatement } from "@/lib/bank-import";
 import { ALL_TIME, inRange, rangeLabel, todayISO, type DateRange } from "@/lib/dates";
 import { compareDocs, type Doc } from "@/lib/documents";
@@ -61,10 +78,12 @@ export function BankView({
   initialDocs,
   initialTxs,
   initialRules,
+  initialLinks,
   initialTab,
   email,
 }: {
   source: Source;
+  initialLinks: VendorLink[];
   initialTab?: string;
   initialDocs: Doc[];
   initialTxs: Transaction[];
@@ -76,6 +95,8 @@ export function BankView({
   const [docs, setDocs] = useState(initialDocs);
   const [txs, setTxs] = useState(initialTxs);
   const [rules, setRules] = useState(initialRules);
+  const [links, setLinks] = useState(initialLinks);
+  const [billing, setBilling] = useState<BillingDraft | null>(null);
   const [range, setRange] = useState<DateRange>(ALL_TIME);
   const [query, setQuery] = useState("");
   const [tab, setTab] = useState<Tab>(initialTab === "check" ? "check" : "missing");
@@ -163,6 +184,16 @@ export function BankView({
     const visible = new Set(groups.check.map((t) => t.id));
     return matches.filter((m) => m.sure && visible.has(m.txId));
   }, [matches, groups.check]);
+
+  // Billing pages to visit for the receipts still missing, one per supplier.
+  const billingToVisit = useMemo(() => {
+    const seen = new Map<string, { link: VendorLink; count: number }>();
+    for (const t of groups.missing) {
+      const link = t.amount < 0 ? linkFor(t, links) : undefined;
+      if (link) seen.set(link.id, { link, count: (seen.get(link.id)?.count ?? 0) + 1 });
+    }
+    return [...seen.values()];
+  }, [groups.missing, links]);
 
   const missingTotal = groups.missing.reduce((sum, t) => sum + (t.amount < 0 ? -t.amount : 0), 0);
 
@@ -296,6 +327,26 @@ export function BankView({
     if (error) return toast(error.message, { tone: "error" });
     setRules((prev) => prev.filter((r) => r.id !== rule.id));
     toast(`Rule removed · lines already marked stay as they are`);
+  }
+
+  async function saveLink(link: Omit<VendorLink, "id"> & { id?: string }) {
+    const request = link.id
+      ? supabase.from("vendor_links").update({ pattern: link.pattern, url: link.url }).eq("id", link.id)
+      : supabase.from("vendor_links").insert({ pattern: link.pattern, url: link.url });
+    const { data, error } = await request.select(LINK_COLUMNS).single();
+    if (error) throw new Error(error.message);
+    setLinks((prev) => [...prev.filter((l) => l.id !== data.id), data].sort((a, b) => a.pattern.localeCompare(b.pattern)));
+    setBilling(null);
+  }
+
+  async function deleteLink(id: string) {
+    const { error } = await supabase.from("vendor_links").delete().eq("id", id);
+    if (error) {
+      toast(error.message, { tone: "error" });
+      throw error;
+    }
+    setLinks((prev) => prev.filter((l) => l.id !== id));
+    setBilling(null);
   }
 
   async function approveAll() {
@@ -516,6 +567,28 @@ export function BankView({
               </div>
             )}
 
+            {tab === "missing" && billingToVisit.length > 0 && (
+              <div className="mt-4 px-1">
+                <p className="text-sm text-muted">Download from billing pages:</p>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {billingToVisit.map(({ link, count }) => (
+                    <li key={link.id}>
+                      <a
+                        href={link.url}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="flex h-9 items-center gap-1.5 rounded-full border border-accent/40 bg-card px-3.5 text-sm font-semibold text-accent hover:bg-accent-soft"
+                      >
+                        {link.pattern}
+                        {count > 1 && <span className="nums text-xs font-normal opacity-70">×{count}</span>}
+                        <ExternalLink className="size-3.5" />
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {tab === "missing" && groups.missing.length > 0 && (
               <div className="mt-4 flex items-center gap-3 px-1 text-sm">
                 {missingTotal > 0 && (
@@ -550,6 +623,8 @@ export function BankView({
                   busy={busy}
                   docsById={docsById}
                   suggestionFor={suggestionFor}
+                  links={links}
+                  onBilling={setBilling}
                   onAttach={setAttachId}
                   onOpenDoc={setOpenDocId}
                   onLink={link}
@@ -580,6 +655,7 @@ export function BankView({
           void link(attachTx, null, "no_receipt");
         }}
       />
+      <BillingDialog draft={billing} onClose={() => setBilling(null)} onSave={saveLink} onDelete={deleteLink} />
       <DocumentPanel
         supabase={supabase}
         doc={openDoc}
@@ -651,6 +727,8 @@ function TxList({
   busy,
   docsById,
   suggestionFor,
+  links,
+  onBilling,
   onAttach,
   onOpenDoc,
   onLink,
@@ -660,6 +738,8 @@ function TxList({
   busy: string | null;
   docsById: Map<string, Doc>;
   suggestionFor: Map<string, Match>;
+  links: VendorLink[];
+  onBilling: (draft: BillingDraft) => void;
   onAttach: (txId: string) => void;
   onOpenDoc: (docId: string) => void;
   onLink: (tx: Transaction, docId: string | null, status: Transaction["status"]) => void;
@@ -679,6 +759,7 @@ function TxList({
               const suggested = suggestion ? docsById.get(suggestion.docId) : undefined;
               const linked = tx.document_id ? docsById.get(tx.document_id) : undefined;
               const Direction = tx.amount < 0 ? ArrowUpRight : ArrowDownLeft;
+              const billing = tx.status === "unmatched" && tx.amount < 0 ? linkFor(tx, links) : undefined;
               return (
                 <li key={tx.id} className="border-b border-rule px-3 py-3 last:border-b-0 sm:px-4">
                   <div className="flex items-center gap-3">
@@ -758,6 +839,39 @@ function TxList({
                         <SmallButton onClick={() => onLink(tx, null, "no_receipt")} label="No receipt needed">
                           No {paperFor(tx)} needed
                         </SmallButton>
+                        {billing ? (
+                          <span className="flex items-center">
+                            <a
+                              href={billing.url}
+                              target="_blank"
+                              rel="noopener noreferrer"
+                              className="flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-accent hover:bg-accent-soft"
+                            >
+                              Billing page <ExternalLink className="size-3.5" />
+                            </a>
+                            <button
+                              type="button"
+                              onClick={() => onBilling(billing)}
+                              aria-label="Edit billing page"
+                              title="Edit billing page"
+                              className="grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
+                            >
+                              <Pencil className="size-3.5" />
+                            </button>
+                          </span>
+                        ) : (
+                          tx.amount < 0 && (
+                            <button
+                              type="button"
+                              onClick={() => onBilling({ pattern: tx.counterparty || "", url: "" })}
+                              aria-label="Add billing page"
+                              title="Add billing page"
+                              className="grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
+                            >
+                              <Globe className="size-4" />
+                            </button>
+                          )
+                        )}
                       </>
                     )}
                   </div>

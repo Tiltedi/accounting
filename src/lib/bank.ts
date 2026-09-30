@@ -65,6 +65,42 @@ export function ruleFor(tx: Pick<Transaction, "counterparty" | "description">, r
   });
 }
 
+// ----- Billing pages ------------------------------------------------------------
+
+// Where a supplier's invoices can be downloaded, found by name on a line.
+export type VendorLink = Pick<Database["public"]["Tables"]["vendor_links"]["Row"], "id" | "pattern" | "url">;
+
+export const LINK_COLUMNS = "id,pattern,url" as const;
+
+export async function fetchVendorLinks(supabase: Client): Promise<VendorLink[]> {
+  const { data, error } = await supabase.from("vendor_links").select(LINK_COLUMNS).order("pattern");
+  if (error) throw error;
+  return data;
+}
+
+export function linkFor(tx: Pick<Transaction, "counterparty" | "description">, links: VendorLink[]) {
+  const text = squash(`${tx.counterparty ?? ""} ${tx.description ?? ""}`);
+  let best: VendorLink | undefined;
+  for (const link of links) {
+    const pattern = squash(link.pattern);
+    if (text.includes(pattern) && (!best || pattern.length > best.pattern.length)) best = link;
+  }
+  return best;
+}
+
+// Accepts "supabase.com/dashboard/…" as well as full URLs.
+export function normalizeUrl(input: string) {
+  const value = input.trim();
+  if (!value) return null;
+  const withScheme = /^https?:\/\//i.test(value) ? value : `https://${value}`;
+  try {
+    const url = new URL(withScheme);
+    return url.hostname.includes(".") ? url.href : null;
+  } catch {
+    return null;
+  }
+}
+
 // ----- Dismissed suggestions (this browser only) --------------------------------
 
 const DISMISSED_KEY = "bank:dismissed";
