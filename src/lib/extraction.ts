@@ -5,7 +5,9 @@ import { CATEGORIES, CATEGORY_NAMES, READ_DOC_TYPES } from "@/lib/categories";
 
 // Reads a document with Claude and returns bookkeeping fields.
 
-const MODEL = "claude-opus-5-5";
+export const MODELS = ["claude-opus-5-5", "claude-sonnet-5-5"] as const;
+export type Model = (typeof MODELS)[number];
+const MODEL: Model = "claude-opus-5-5";
 
 const ExtractionSchema = z.object({
   vendor: z
@@ -56,9 +58,15 @@ export function canExtract(mimeType: string) {
 export class ExtractionError extends Error {}
 
 // Claude Opus 5.5 list prices, USD per million tokens.
-const PRICE = { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 };
+// List prices, USD per million tokens. A refusal fallback is billed at the
+// serving model's rates.
+const PRICES: Record<Model, { input: number; output: number; cacheWrite: number; cacheRead: number }> = {
+  "claude-opus-5-5": { input: 4, output: 20, cacheWrite: 5, cacheRead: 0.2 },
+  "claude-sonnet-5-5": { input: 2, output: 10, cacheWrite: 2.5, cacheRead: 0.2 },
+};
 
-function costUsd(usage: Anthropic.Beta.BetaUsage) {
+function costUsd(usage: Anthropic.Beta.BetaUsage, model: string) {
+  const PRICE = PRICES[model as Model] ?? PRICES[MODEL];
   const cost =
     usage.input_tokens * PRICE.input +
     usage.output_tokens * PRICE.output +
@@ -74,10 +82,10 @@ function fileBlock({ data, mimeType }: ExtractInput): Anthropic.Beta.BetaContent
     : { type: "image", source: { type: "base64", media_type: mimeType as ImageType, data: base64 } };
 }
 
-async function read<T extends z.ZodType>(input: ExtractInput, schema: T, system: string, maxTokens: number) {
+async function read<T extends z.ZodType>(input: ExtractInput, schema: T, system: string, maxTokens: number, model: Model = MODEL) {
   const client = new Anthropic({ timeout: 55_000, maxRetries: 1 });
   const response = await client.beta.messages.parse({
-    model: MODEL,
+    model,
     max_tokens: maxTokens,
     betas: ["server-side-fallback-2026-07-01"],
     fallbacks: "default",
@@ -97,11 +105,14 @@ async function read<T extends z.ZodType>(input: ExtractInput, schema: T, system:
   if (!response.parsed_output) {
     throw new ExtractionError("No details found in the document.");
   }
-  return { parsed: response.parsed_output as z.infer<T>, costUsd: costUsd(response.usage) };
+  return { parsed: response.parsed_output as z.infer<T>, costUsd: costUsd(response.usage, response.model) };
 }
 
-export async function extractDocument(input: ExtractInput): Promise<{ result: Extraction; costUsd: number }> {
-  const { parsed, costUsd } = await read(input, ExtractionSchema, systemPrompt(), 16000);
+export async function extractDocument(
+  input: ExtractInput,
+  model: Model = MODEL,
+): Promise<{ result: Extraction; costUsd: number }> {
+  const { parsed, costUsd } = await read(input, ExtractionSchema, systemPrompt(), 16000, model);
   return { result: clean(parsed), costUsd };
 }
 
