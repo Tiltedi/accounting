@@ -43,7 +43,7 @@ exactly what your accountant needs.
 | --- | --- |
 | App | Next.js 16 on Vercel (`dub1`, next to the database) |
 | Login, database, files | Supabase project `hgappljfpkqhsnrruzvv` (eu-west-1) |
-| Reading documents | Claude (`claude-opus-5-5`) via `/api/extract` |
+| Reading documents | Claude via `/api/extract`: Sonnet 5.5 for receipts and invoices, Opus 5.5 for card statements |
 
 ## Environment variables
 
