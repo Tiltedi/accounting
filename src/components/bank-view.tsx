@@ -268,16 +268,32 @@ export function BankView({
     );
   }
 
+  // Receipts dropped on the Bank page: stored and read like on Documents;
+  // any match then waits under To approve.
+  async function addReceipts(files: File[]) {
+    let added = 0;
+    for (const file of files) {
+      try {
+        const doc = await uploadDocument(supabase, await prepareFile(file));
+        upsertDoc(doc);
+        added++;
+        void read(doc.id);
+      } catch (err) {
+        toast(err instanceof DuplicateError ? `${file.name} is already in Documents` : errorMessage(err), { tone: "error" });
+      }
+    }
+    if (added) toast(`Added ${added} ${added === 1 ? "receipt" : "receipts"} · matches show under To approve`, { duration: 6000 });
+  }
+
   async function onImport(files: File[]) {
+    const isCsv = (file: File) => /\.(csv|txt|tsv)$/i.test(file.name) || /csv|text\/plain/.test(file.type);
     setBusy("import");
     try {
-      for (const file of files) {
-        const csv = /\.(csv|txt|tsv)$/i.test(file.name) || /csv|text\/plain/.test(file.type);
-        if (csv) await importCsv(file);
-        else if (card) await importCardStatement(file);
-        else throw new Error("Use the CSV export from your bank's website.");
-      }
-      setTab("missing");
+      for (const file of files.filter(isCsv)) await importCsv(file);
+      const others = files.filter((f) => !isCsv(f));
+      if (card) for (const file of others) await importCardStatement(file);
+      else if (others.length) await addReceipts(others);
+      if (files.some(isCsv) || card) setTab("missing");
     } catch (err) {
       toast(errorMessage(err), { tone: "error" });
     } finally {
@@ -395,10 +411,21 @@ export function BankView({
     setAttachId(null);
     setBusy(tx.id);
     try {
-      const doc = await uploadDocument(supabase, await prepareFile(file));
+      let doc: Doc;
+      let fresh = true;
+      try {
+        doc = await uploadDocument(supabase, await prepareFile(file));
+      } catch (err) {
+        // Already in Documents: link that copy, unless it belongs to another line.
+        const existing = err instanceof DuplicateError ? docsById.get(err.docId) : undefined;
+        if (!existing) throw err;
+        if (txs.some((t) => t.document_id === existing.id)) throw new Error(`${file.name} is already linked to another payment`);
+        doc = existing;
+        fresh = false;
+      }
       upsertDoc(doc);
       upsertTx(await linkTransaction(supabase, tx.id, { document_id: doc.id, status: "matched", matched_by: "manual" }));
-      void read(doc.id);
+      if (fresh) void read(doc.id);
     } catch (err) {
       toast(errorMessage(err), { tone: "error" });
     } finally {
@@ -634,6 +661,8 @@ export function BankView({
                   onOpenDoc={setOpenDocId}
                   onLink={link}
                   onDismiss={dismiss}
+                  dragging={dragging}
+                  onDropFile={(tx, file) => void uploadFor(tx, file)}
                 />
               )}
             </div>
@@ -641,7 +670,9 @@ export function BankView({
         )}
       </main>
 
-      {dragging && <DropOverlay label={card ? "Drop to add the statement" : "Drop to import the statement"} />}
+      {dragging && (
+        <DropOverlay banner label={card ? "Drop a statement, or a receipt on its line" : "Drop a statement or receipts, or a receipt on its line"} />
+      )}
 
       <DateRangeDialog open={dialog === "dates"} value={range} onClose={() => setDialog(null)} onChange={(next) => setRange(next.from || next.to ? next : ALL_TIME)} />
       <AccountDialog open={dialog === "account"} email={email} supabase={supabase} docs={docs} onClose={() => setDialog(null)} />
@@ -740,6 +771,8 @@ function TxList({
   onOpenDoc,
   onLink,
   onDismiss,
+  dragging,
+  onDropFile,
 }: {
   txs: Transaction[];
   busy: string | null;
@@ -751,7 +784,10 @@ function TxList({
   onOpenDoc: (docId: string) => void;
   onLink: (tx: Transaction, docId: string | null, status: Transaction["status"]) => void;
   onDismiss: (match: Match) => void;
+  dragging: boolean;
+  onDropFile: (tx: Transaction, file: File) => void;
 }) {
+  const [dropTarget, setDropTarget] = useState<string | null>(null);
   return (
     <div className="space-y-6">
       {monthGroups(txs, (t) => t.booked_on).map((group) => (
@@ -768,7 +804,30 @@ function TxList({
               const Direction = tx.amount < 0 ? ArrowUpRight : ArrowDownLeft;
               const billing = tx.status === "unmatched" && tx.amount < 0 ? linkFor(tx, links) : undefined;
               return (
-                <li key={tx.id} className="border-b border-rule px-3 py-3 last:border-b-0 sm:px-4">
+                <li
+                  key={tx.id}
+                  className={`border-b border-rule px-3 py-3 transition last:border-b-0 sm:px-4 ${
+                    dragging && dropTarget === tx.id ? "bg-accent-soft ring-2 ring-accent ring-inset" : ""
+                  }`}
+                  // A receipt dropped on an open line is attached to it.
+                  onDragOver={(e) => {
+                    if (tx.status !== "unmatched" || !e.dataTransfer.types.includes("Files")) return;
+                    e.preventDefault();
+                    setDropTarget(tx.id);
+                  }}
+                  onDragLeave={(e) => {
+                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget((id) => (id === tx.id ? null : id));
+                  }}
+                  onDrop={(e) => {
+                    if (tx.status !== "unmatched") return;
+                    const file = e.dataTransfer.files[0];
+                    if (!file || /\.(csv|txt|tsv)$/i.test(file.name)) return; // statements go to the page
+                    e.preventDefault();
+                    e.stopPropagation();
+                    setDropTarget(null);
+                    onDropFile(tx, file);
+                  }}
+                >
                   <div className="flex items-center gap-3">
                     <Direction className={`size-4 shrink-0 ${tx.amount < 0 ? "text-muted" : "text-accent"}`} aria-hidden="true" />
                     <div className="min-w-0 flex-1">

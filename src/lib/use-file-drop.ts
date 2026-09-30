@@ -29,19 +29,24 @@ export function useFileDrop(onFiles: (files: File[]) => void, enabled = true) {
       depth = Math.max(0, depth - 1);
       if (depth === 0) setDragging(false);
     };
+    // Capture phase: resets even when an element (a bank line) takes the drop.
+    const onAnyDrop = () => {
+      depth = 0;
+      setDragging(false);
+    };
     const onDrop = (e: DragEvent) => {
       if (!hasFiles(e)) return;
       e.preventDefault();
-      depth = 0;
-      setDragging(false);
       const files = [...(e.dataTransfer?.files ?? [])];
       if (files.length) handler.current(files);
     };
     window.addEventListener("dragenter", onEnter);
     window.addEventListener("dragover", onOver);
     window.addEventListener("dragleave", onLeave);
+    window.addEventListener("drop", onAnyDrop, true);
     window.addEventListener("drop", onDrop);
     return () => {
+      window.removeEventListener("drop", onAnyDrop, true);
       window.removeEventListener("dragenter", onEnter);
       window.removeEventListener("dragover", onOver);
       window.removeEventListener("dragleave", onLeave);
