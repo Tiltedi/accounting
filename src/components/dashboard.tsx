@@ -11,12 +11,14 @@ import { DropOverlay } from "@/components/drop-overlay";
 import { FileButton } from "@/components/file-button";
 import { AppHeader } from "@/components/app-header";
 import { pendingCounts } from "@/components/bank-view";
+import { offerMatch } from "@/components/match-offer";
 import { Logo } from "@/components/logo";
 import { ScanDialog } from "@/components/scan-dialog";
 import { toast } from "@/components/toaster";
 import { CATEGORIES } from "@/lib/categories";
 import { ALL_TIME, inRange, rangeLabel, todayISO, type DateRange } from "@/lib/dates";
-import { findMatches, loadDismissed, type Transaction } from "@/lib/bank";
+import { findMatches, loadDismissed, type Match, type Transaction } from "@/lib/bank";
+import { approveMatches, readCardStatement } from "@/lib/bank-import";
 import { DOC_COLUMNS, compareDocs, fetchAllDocuments, type Doc } from "@/lib/documents";
 import { downloadOne, downloadZip } from "@/lib/export";
 import { createLimiter, imageToJpeg, jpegsToPdf, type ScanPage } from "@/lib/files";
@@ -68,7 +70,8 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
   const [range, setRange] = useState<DateRange>(ALL_TIME);
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
-  const [payments] = useState(() => new Map(initialTxs.filter((t) => t.document_id).map((t) => [t.document_id!, t])));
+  const [txs, setTxs] = useState(initialTxs);
+  const payments = useMemo(() => new Map(txs.filter((t) => t.document_id).map((t) => [t.document_id!, t])), [txs]);
   const [query, setQuery] = useState("");
   const [limit, setLimit] = useState(PAGE_SIZE);
   const [selected, setSelected] = useState<Set<string>>(() => new Set());
@@ -104,7 +107,31 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
     // eslint-disable-next-line react-hooks/set-state-in-effect -- reading localStorage after hydration
     setDismissed(loadDismissed());
   }, []);
-  const pending = useMemo(() => pendingCounts(findMatches(initialTxs, docs, dismissed), initialTxs), [initialTxs, docs, dismissed]);
+  const pending = useMemo(() => pendingCounts(findMatches(txs, docs, dismissed), txs), [txs, docs, dismissed]);
+
+  // Reading finishes later: offers are computed on the state as it is then.
+  const latest = useRef({ txs, docs, dismissed });
+  useEffect(() => {
+    latest.current = { txs, docs, dismissed };
+  }, [txs, docs, dismissed]);
+
+  const mergeTxs = useCallback((changed: Transaction[]) => {
+    const ids = new Set(changed.map((t) => t.id));
+    setTxs((prev) => [...prev.filter((t) => !ids.has(t.id)), ...changed]);
+  }, []);
+
+  const approveOffer = useCallback(
+    async (match: Match) => {
+      try {
+        const saved = await approveMatches(supabase, [match]);
+        mergeTxs(saved);
+        toast(saved.length ? "Matched" : "That payment was already handled");
+      } catch (err) {
+        toast(errorMessage(err), { tone: "error" });
+      }
+    },
+    [supabase, mergeTxs],
+  );
 
   const openDoc = openId ? (docs.find((d) => d.id === openId) ?? null) : null;
   const filtersActive = range !== ALL_TIME || category !== "" || status !== "" || query !== "";
@@ -120,14 +147,18 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
         try {
           const result = await requestExtraction(id);
           if (result.doc) upsert(result.doc);
-          const match = result.doc ? findMatches(initialTxs, [result.doc], loadDismissed())[0] : undefined;
-          const tx = match && initialTxs.find((t) => t.id === match.txId);
-          if (tx) {
-            const page = tx.source === "card" ? "/card" : "/bank";
-            toast(`${result.doc!.vendor || "Receipt"} matches a ${tx.source === "card" ? "card" : "bank"} payment`, {
+          if (result.notice === "card_statement") {
+            // A card statement: list its purchases as card lines.
+            const statement = await readCardStatement(id);
+            if (statement.doc) upsert(statement.doc);
+            if (statement.error) throw new Error(statement.error);
+            mergeTxs(statement.txs);
+            toast(`Card statement · ${statement.txs.length} card ${statement.txs.length === 1 ? "line" : "lines"}`, {
               duration: 8000,
-              action: { label: "Review", onClick: () => router.push(`${page}?tab=check`) },
+              action: { label: "Open", onClick: () => router.push("/card") },
             });
+          } else if (result.doc) {
+            offerMatch(result.doc, latest.current, (m) => void approveOffer(m));
           }
           if (result.error) toast(result.error, { tone: "error" });
           if (result.notice === "not_configured" && !warnedNotConfigured) {
@@ -145,7 +176,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
         }
       });
     },
-    [readLimit, upsert, initialTxs, router],
+    [readLimit, upsert, mergeTxs, approveOffer, router],
   );
 
   const addFiles = useCallback(

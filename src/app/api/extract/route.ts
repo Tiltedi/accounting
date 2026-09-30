@@ -1,5 +1,5 @@
 import Anthropic from "@anthropic-ai/sdk";
-import { fingerprints, TX_COLUMNS, type ParsedTransaction } from "@/lib/bank";
+import { fetchRules, fingerprints, ruleFor, TX_COLUMNS, type ParsedTransaction } from "@/lib/bank";
 import type { Json } from "@/lib/database.types";
 import { BUCKET, DOC_COLUMNS, type Client, type Doc, type DocUpdate } from "@/lib/documents";
 import { canExtract, extractCardStatement, extractDocument, ExtractionError, type StatementExtraction } from "@/lib/extraction";
@@ -23,7 +23,7 @@ export async function POST(request: Request) {
 
   const { data: doc, error } = await supabase
     .from("documents")
-    .select("id,file_path,file_name,mime_type,size_bytes,doc_date,doc_type")
+    .select("id,file_path,file_name,mime_type,size_bytes,doc_date,doc_type,status,ai_cost_usd")
     .eq("id", id)
     .maybeSingle();
   if (error) return Response.json({ error: error.message }, { status: 500 });
@@ -70,13 +70,21 @@ export async function POST(request: Request) {
         tax: null,
         currency,
         extraction: result as unknown as Json,
-        ai_cost_usd: costUsd,
+        // Still processing: the first read (which spotted the statement) counts too.
+        ai_cost_usd: costUsd + (doc.status === "processing" ? Number(doc.ai_cost_usd ?? 0) : 0),
       });
       const txs = await saveCardLines(supabase, id, result, currency);
       return Response.json({ doc: updated, txs });
     }
 
     const { result, costUsd } = await extractDocument(input);
+
+    // A card statement dropped anywhere: mark it, and the client asks for its
+    // lines in a second request (each stays well within the time limit).
+    if (result.card_statement) {
+      const marked = await save({ status: "processing", doc_type: "statement", ai_cost_usd: costUsd });
+      return Response.json({ doc: marked, txs: [], notice: "card_statement" });
+    }
 
     const updated = await save({
       status: "ready",
@@ -120,13 +128,18 @@ async function saveCardLines(supabase: Client, statementId: string, result: Stat
     description: line.details,
   }));
   const prints = await fingerprints(parsed);
-  const records = parsed.map((tx, i) => ({
-    ...tx,
-    source: "card",
+  const rules = await fetchRules(supabase);
+  const records = parsed.map((tx, i) => {
+    const rule = ruleFor(tx, rules);
+    return {
+      ...tx,
+      ...(rule ? { status: "no_receipt", matched_by: "auto", note: rule.label || rule.pattern } : {}),
+      source: "card",
     statement_id: statementId,
-    import_id: statementId,
-    fingerprint: prints[i],
-  }));
+      import_id: statementId,
+      fingerprint: prints[i],
+    };
+  });
   if (records.length) {
     // Reading the same statement again keeps lines (and their receipts) already saved.
     const { error } = await supabase.from("bank_transactions").upsert(records, { onConflict: "fingerprint", ignoreDuplicates: true });

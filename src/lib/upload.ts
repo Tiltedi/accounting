@@ -91,7 +91,7 @@ async function findBySha(supabase: Client, sha256: string) {
   return data?.id ?? null;
 }
 
-export type ExtractResult = { doc: Doc | null; notice?: "not_configured" | "unsupported"; error?: string };
+export type ExtractResult = { doc: Doc | null; notice?: "not_configured" | "unsupported" | "card_statement"; error?: string };
 
 export async function requestExtraction(id: string): Promise<ExtractResult> {
   const response = await fetch("/api/extract", {

@@ -20,6 +20,7 @@ const ExtractionSchema = z.object({
   total: z.number().nullable().describe("Final amount including tax"),
   tax: z.number().nullable().describe("Total VAT / sales tax"),
   currency: z.string().nullable().describe("ISO 4217 code, e.g. EUR"),
+  card_statement: z.boolean().describe("True only for a credit card statement: a periodic overview of many card transactions with an amount to settle"),
 });
 
 export type Extraction = z.infer<typeof ExtractionSchema>;
@@ -177,6 +178,7 @@ function clean(raw: Extraction): Extraction {
     total: amount(raw.total),
     tax: amount(raw.tax),
     currency: currency && /^[A-Z]{3}$/.test(currency) ? currency : null,
+    card_statement: raw.card_statement === true,
   };
 }
 

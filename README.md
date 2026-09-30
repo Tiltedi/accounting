@@ -19,9 +19,12 @@ exactly what your accountant needs.
   lists every purchase so each one can get its receipt; the statement itself
   is matched to the card settlement on the bank statement.
 - **Approval queue**: suggested matches are never linked silently. They wait
-  under *To approve*; unambiguous ones can be approved in one tap. A new
-  receipt that matches a payment shows a prompt, and the header shows how
-  many wait.
+  under *To approve*; unambiguous ones can be approved in one tap. The
+  header shows how many wait.
+- **Drop anything anywhere**: drop receipts, bank CSVs or card statements on
+  any page. Statements are recognised wherever they land; a receipt is read
+  and its payment offered with an *Approve* button (or drop it straight onto
+  its line).
 - **Rules**: lines from payees that never need a receipt (bank fees, salary,
   rent, suppliers that e-invoice via Peppol) are marked on import. Add one
   from any line with *Always for …*, remove it under *No receipt needed*.

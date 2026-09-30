@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
@@ -28,6 +28,7 @@ import { BillingDialog, type BillingDraft } from "@/components/billing-dialog";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentPanel } from "@/components/document-panel";
 import { DropOverlay } from "@/components/drop-overlay";
+import { offerMatch } from "@/components/match-offer";
 import { FileButton } from "@/components/file-button";
 import { toast } from "@/components/toaster";
 import {
@@ -128,6 +129,12 @@ export function BankView({
   }, []);
 
   const pending = useMemo(() => pendingCounts(matches, txs), [matches, txs]);
+
+  // Async flows (reading a dropped file) need the state as it is when they finish.
+  const latest = useRef({ txs, docs, dismissed });
+  useEffect(() => {
+    latest.current = { txs, docs, dismissed };
+  }, [txs, docs, dismissed]);
 
   // ----- Views -----------------------------------------------------------
 
@@ -239,7 +246,7 @@ export function BankView({
     toast(parts.join(" · "), added.length ? undoImport(added.map((t) => t.id)) : {});
   }
 
-  // A card statement PDF or photo: stored as a document, then Claude lists its purchases.
+  // A card statement from the "Add statement" button: always read as a statement.
   async function importCardStatement(file: File) {
     let doc: Doc;
     try {
@@ -251,49 +258,73 @@ export function BankView({
         doc = existing;
       } else throw err;
     }
-    upsertDoc({ ...doc, status: "processing" });
+    await finishStatement(doc);
+  }
+
+  // Claude lists the statement's purchases; they become card lines.
+  async function finishStatement(doc: Doc) {
+    upsertDoc({ ...doc, status: "processing", doc_type: "statement" });
     const result = await readCardStatement(doc.id);
     if (result.doc) upsertDoc(result.doc);
     if (result.error) throw new Error(result.error);
     if (result.notice) throw new Error("Saved, but it couldn't be read automatically.");
-    const known = new Set(txs.map((t) => t.id));
+    const known = new Set(latest.current.txs.map((t) => t.id));
     const fresh = result.txs.filter((t) => !known.has(t.id));
-    const { txs: saved, covered } = await withRules(fresh);
+    const { txs: saved } = await withRules(fresh);
     const savedById = new Map(saved.map((t) => [t.id, t]));
     const ids = new Set(result.txs.map((t) => t.id));
-    setTxs((prev) => [...prev.filter((t) => !ids.has(t.id)), ...result.txs.map((t) => savedById.get(t.id) ?? t)].sort(compareTxs));
+    const lines = result.txs.map((t) => savedById.get(t.id) ?? t);
+    setTxs((prev) => [...prev.filter((t) => !ids.has(t.id)), ...lines].sort(compareTxs));
+    const covered = lines.filter((t) => t.status === "no_receipt").length;
     toast(
-      [`${result.txs.length} card ${result.txs.length === 1 ? "line" : "lines"}`, covered ? `${covered} need no receipt` : ""].filter(Boolean).join(" · "),
+      [`${lines.length} card ${lines.length === 1 ? "line" : "lines"}`, covered ? `${covered} need no receipt` : ""].filter(Boolean).join(" · "),
       fresh.length && fresh.length === result.txs.length ? undoImport(fresh.map((t) => t.id), doc.id) : {},
     );
   }
 
-  // Receipts dropped on the Bank page: stored and read like on Documents;
-  // any match then waits under To approve.
-  async function addReceipts(files: File[]) {
-    let added = 0;
-    for (const file of files) {
-      try {
-        const doc = await uploadDocument(supabase, await prepareFile(file));
-        upsertDoc(doc);
-        added++;
-        void read(doc.id);
-      } catch (err) {
-        toast(err instanceof DuplicateError ? `${file.name} is already in Documents` : errorMessage(err), { tone: "error" });
-      }
+  async function approveOffer(match: Match) {
+    try {
+      const saved = await approveMatches(supabase, [match]);
+      saved.forEach(upsertTx);
+      toast(saved.length ? "Matched" : "That payment was already handled");
+    } catch (err) {
+      toast(errorMessage(err), { tone: "error" });
     }
-    if (added) toast(`Added ${added} ${added === 1 ? "receipt" : "receipts"} · matches show under To approve`, { duration: 6000 });
   }
 
-  async function onImport(files: File[]) {
+  // Any file dropped on the page: a statement becomes card lines, a receipt
+  // is read and its payment offered for approval.
+  async function intake(file: File) {
+    let doc: Doc;
+    try {
+      doc = await uploadDocument(supabase, await prepareFile(file));
+    } catch (err) {
+      const existing = err instanceof DuplicateError ? docsById.get(err.docId) : undefined;
+      if (existing?.doc_type === "statement") return finishStatement(existing);
+      if (existing && !latest.current.txs.some((t) => t.document_id === existing.id)) {
+        return offerMatch(existing, latest.current, (m) => void approveOffer(m), { announceNone: true });
+      }
+      if (err instanceof DuplicateError) return void toast(`${file.name} is already in Documents`, { tone: "error" });
+      throw err;
+    }
+    upsertDoc(doc);
+    const result = await read(doc.id);
+    if (result?.notice === "card_statement" && result.doc) return finishStatement(result.doc);
+    if (result?.doc) offerMatch(result.doc, latest.current, (m) => void approveOffer(m), { announceNone: true });
+  }
+
+  async function onImport(files: File[], via: "button" | "drop" = "button") {
     const isCsv = (file: File) => /\.(csv|txt|tsv)$/i.test(file.name) || /csv|text\/plain/.test(file.type);
     setBusy("import");
     try {
       for (const file of files.filter(isCsv)) await importCsv(file);
       const others = files.filter((f) => !isCsv(f));
-      if (card) for (const file of others) await importCardStatement(file);
-      else if (others.length) await addReceipts(others);
-      if (files.some(isCsv) || card) setTab("missing");
+      if (card && via === "button") for (const file of others) await importCardStatement(file);
+      else
+        await Promise.all(
+          others.map((file) => intake(file).catch((err) => void toast(`${file.name}: ${errorMessage(err)}`, { tone: "error" }))),
+        );
+      if (files.some(isCsv) || (card && via === "button")) setTab("missing");
     } catch (err) {
       toast(errorMessage(err), { tone: "error" });
     } finally {
@@ -393,8 +424,10 @@ export function BankView({
         const result = await requestExtraction(id);
         if (result.doc) upsertDoc(result.doc);
         if (result.error) toast(result.error, { tone: "error" });
+        return result;
       } catch (err) {
         toast(errorMessage(err), { tone: "error" });
+        return null;
       } finally {
         setReading((s) => {
           const next = new Set(s);
@@ -459,7 +492,7 @@ export function BankView({
   }
 
   // Drop a statement anywhere to import it (not while a dialog takes files itself).
-  const dragging = useFileDrop((files) => void onImport(files), busy !== "import" && attachId === null && billing === null);
+  const dragging = useFileDrop((files) => void onImport(files, "drop"), busy !== "import" && attachId === null && billing === null);
 
   // ----- Render ----------------------------------------------------------
 
@@ -671,7 +704,7 @@ export function BankView({
       </main>
 
       {dragging && (
-        <DropOverlay banner label={card ? "Drop a statement, or a receipt on its line" : "Drop a statement or receipts, or a receipt on its line"} />
+        <DropOverlay banner label="Drop statements or receipts — or a receipt on its line" />
       )}
 
       <DateRangeDialog open={dialog === "dates"} value={range} onClose={() => setDialog(null)} onChange={(next) => setRange(next.from || next.to ? next : ALL_TIME)} />
