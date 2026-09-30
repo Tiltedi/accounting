@@ -193,6 +193,24 @@ export type ParsedTransaction = {
 };
 
 const OUTGOING = /^(af|d|db|debit|debet|uit|out|-|addebito|s|soll)$/i;
+const IBAN = /^[A-Z]{2}\d{2}[A-Z0-9 ]{8,30}$/;
+
+// Some banks (ING Belgium) only give the other side's IBAN and bury the name
+// in the description. Pulls a readable name out of the usual phrasings.
+export function nameFromDescription(text: string): string | null {
+  const transfer = /\b(?:To|From|In favour of|Naar|Van|Ten gunste van|À|De|En faveur de):\s*(.+?)\s+-\s+[A-Z]{2}\d{2}[A-Z0-9]/.exec(text);
+  if (transfer) return transfer[1].trim();
+  const debit = /^(?:Direct debit in euro \(SEPA\)|Europese domiciliëring \(SEPA\)|Domiciliation européenne \(SEPA\))\s+(.+?)\s+(?:Advice here with|Bericht hierbij|Avis ci-joint)/i.exec(text);
+  if (debit) return debit[1].trim();
+  // "Payment Debit Mastercard 23/09/26 - 7.21 pm - SPOORLOOS PERRON 9000 - GENT - BEL …"
+  const card = /^(?:Payment|Betaling|Paiement)\b.*?\d{2}\/\d{2}\/\d{2}\s+-\s+[\d.:]+\s*(?:am|pm|u)?\s+-\s+(.+?)\s+-\s/i.exec(text);
+  if (card) {
+    const name = card[1].replace(/(\s+\S*\d\S*)+$/, "").trim();
+    return name || null;
+  }
+  if (/^(?:Breakdown of charges|Detail van de kosten|Détail des frais)\b/i.test(text)) return "ING";
+  return null;
+}
 
 export function applyMapping(rows: string[][], mapping: Mapping): ParsedTransaction[] {
   const out: ParsedTransaction[] = [];
@@ -213,13 +231,16 @@ export function applyMapping(rows: string[][], mapping: Mapping): ParsedTransact
     if (amount === null || amount === 0) continue;
 
     const currency = cell(row, mapping.currency).toUpperCase();
+    const description = cell(row, mapping.description).replace(/\s+/g, " ");
+    let counterparty = cell(row, mapping.counterparty).replace(/\s+/g, " ");
+    if (!counterparty || IBAN.test(counterparty)) counterparty = nameFromDescription(description) ?? counterparty;
     out.push({
       account: cell(row, mapping.account) || null,
       booked_on,
       amount,
       currency: /^[A-Z]{3}$/.test(currency) ? currency : "EUR",
-      counterparty: cell(row, mapping.counterparty).replace(/\s+/g, " ") || null,
-      description: cell(row, mapping.description).replace(/\s+/g, " ").slice(0, 500) || null,
+      counterparty: counterparty || null,
+      description: description.slice(0, 500) || null,
     });
   }
   return out;
