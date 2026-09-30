@@ -7,6 +7,7 @@ import { AccountDialog } from "@/components/account-dialog";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentList } from "@/components/document-list";
 import { DocumentPanel } from "@/components/document-panel";
+import { DropOverlay } from "@/components/drop-overlay";
 import { FileButton } from "@/components/file-button";
 import { AppHeader } from "@/components/app-header";
 import { pendingCounts } from "@/components/bank-view";
@@ -21,6 +22,7 @@ import { downloadOne, downloadZip } from "@/lib/export";
 import { createLimiter, imageToJpeg, jpegsToPdf, type ScanPage } from "@/lib/files";
 import { formatBytes, formatMoney, totalsByCurrency } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
+import { useFileDrop } from "@/lib/use-file-drop";
 import { DuplicateError, prepareFile, requestExtraction, uploadDocument, type PreparedFile } from "@/lib/upload";
 
 const PAGE_SIZE = 200;
@@ -78,7 +80,6 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
   const [scanOpen, setScanOpen] = useState(false);
   const [scanPages, setScanPages] = useState<ScanPage[]>([]);
   const [scanBusy, setScanBusy] = useState(false);
-  const [dragging, setDragging] = useState(false);
   const searchInput = useRef<HTMLInputElement>(null);
   const resumed = useRef(false);
 
@@ -335,42 +336,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
   }, []);
 
   // Drop files anywhere to upload them.
-  useEffect(() => {
-    let depth = 0;
-    const hasFiles = (e: DragEvent) => Boolean(e.dataTransfer?.types.includes("Files"));
-    const onEnter = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      depth++;
-      setDragging(true);
-    };
-    const onOver = (e: DragEvent) => {
-      if (hasFiles(e)) e.preventDefault();
-    };
-    const onLeave = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      depth = Math.max(0, depth - 1);
-      if (depth === 0) setDragging(false);
-    };
-    const onDrop = (e: DragEvent) => {
-      if (!hasFiles(e)) return;
-      e.preventDefault();
-      depth = 0;
-      setDragging(false);
-      const files = [...(e.dataTransfer?.files ?? [])];
-      if (files.length) addPickedFiles(files);
-    };
-    window.addEventListener("dragenter", onEnter);
-    window.addEventListener("dragover", onOver);
-    window.addEventListener("dragleave", onLeave);
-    window.addEventListener("drop", onDrop);
-    return () => {
-      window.removeEventListener("dragenter", onEnter);
-      window.removeEventListener("dragover", onOver);
-      window.removeEventListener("dragleave", onLeave);
-      window.removeEventListener("drop", onDrop);
-    };
-  }, [addPickedFiles]);
+  const dragging = useFileDrop(addPickedFiles);
 
   // ----- Render ----------------------------------------------------------------
 
@@ -602,13 +568,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
         </div>
       </div>
 
-      {dragging && (
-        <div className="pointer-events-none fixed inset-0 z-40 grid place-items-center bg-accent/10 p-6 backdrop-blur-[1px]">
-          <div className="grid h-full w-full place-items-center rounded-3xl border-2 border-dashed border-accent text-lg font-semibold text-accent">
-            Drop to add
-          </div>
-        </div>
-      )}
+      {dragging && <DropOverlay label="Drop to add" />}
 
       <DateRangeDialog
         open={dialog === "dates"}

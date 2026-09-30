@@ -27,6 +27,7 @@ import { AttachDialog } from "@/components/attach-dialog";
 import { BillingDialog, type BillingDraft } from "@/components/billing-dialog";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentPanel } from "@/components/document-panel";
+import { DropOverlay } from "@/components/drop-overlay";
 import { FileButton } from "@/components/file-button";
 import { toast } from "@/components/toaster";
 import {
@@ -50,6 +51,7 @@ import { saveBlob, sanitizeFileName } from "@/lib/files";
 import { formatDay, formatMoney, formatMonth } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
 import { DuplicateError, requestExtraction, uploadDocument, prepareFile } from "@/lib/upload";
+import { useFileDrop } from "@/lib/use-file-drop";
 import { createXlsx } from "@/lib/xlsx";
 
 type Tab = "missing" | "check" | "matched" | "no_receipt" | "unpaid" | "statements";
@@ -429,6 +431,9 @@ export function BankView({
     );
   }
 
+  // Drop a statement anywhere to import it (not while a dialog takes files itself).
+  const dragging = useFileDrop((files) => void onImport(files), busy !== "import" && attachId === null && billing === null);
+
   // ----- Render ----------------------------------------------------------
 
   const attachTx = attachId ? (txs.find((t) => t.id === attachId) ?? null) : null;
@@ -636,6 +641,8 @@ export function BankView({
         )}
       </main>
 
+      {dragging && <DropOverlay label={card ? "Drop to add the statement" : "Drop to import the statement"} />}
+
       <DateRangeDialog open={dialog === "dates"} value={range} onClose={() => setDialog(null)} onChange={(next) => setRange(next.from || next.to ? next : ALL_TIME)} />
       <AccountDialog open={dialog === "account"} email={email} supabase={supabase} docs={docs} onClose={() => setDialog(null)} />
       <AttachDialog
@@ -686,8 +693,8 @@ function BankEmptyState({ card, busy }: { card: boolean; busy: boolean }) {
       </p>
       <p className="mt-1 max-w-sm text-sm text-muted">
         {card
-          ? "Upload the statement PDF (or CSV). Every purchase on it is listed so you can add its receipt."
-          : "Download a CSV from your bank’s website and import it. Payments are matched to your receipts. Your bank is never connected."}
+          ? "Upload or drop the statement PDF (or CSV). Every purchase on it is listed so you can add its receipt."
+          : "Download a CSV from your bank’s website and import it, or drop it here. Payments are matched to your receipts. Your bank is never connected."}
       </p>
     </div>
   );
