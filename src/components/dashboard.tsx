@@ -9,12 +9,13 @@ import { DocumentList } from "@/components/document-list";
 import { DocumentPanel } from "@/components/document-panel";
 import { FileButton } from "@/components/file-button";
 import { AppHeader } from "@/components/app-header";
+import { pendingCounts } from "@/components/bank-view";
 import { Logo } from "@/components/logo";
 import { ScanDialog } from "@/components/scan-dialog";
 import { toast } from "@/components/toaster";
 import { CATEGORIES } from "@/lib/categories";
 import { ALL_TIME, inRange, rangeLabel, todayISO, type DateRange } from "@/lib/dates";
-import type { Transaction } from "@/lib/bank";
+import { findMatches, loadDismissed, type Transaction } from "@/lib/bank";
 import { DOC_COLUMNS, compareDocs, fetchAllDocuments, type Doc } from "@/lib/documents";
 import { downloadOne, downloadZip } from "@/lib/export";
 import { createLimiter, imageToJpeg, jpegsToPdf, type ScanPage } from "@/lib/files";
@@ -97,6 +98,13 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
   const selectedDocs = useMemo(() => filtered.filter((d) => selected.has(d.id)), [filtered, selected]);
   const scope = selectedDocs.length ? selectedDocs : filtered;
   const totals = useMemo(() => totalsByCurrency(scope), [scope]);
+  const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- reading localStorage after hydration
+    setDismissed(loadDismissed());
+  }, []);
+  const pending = useMemo(() => pendingCounts(findMatches(initialTxs, docs, dismissed), initialTxs), [initialTxs, docs, dismissed]);
+
   const openDoc = openId ? (docs.find((d) => d.id === openId) ?? null) : null;
   const filtersActive = range !== ALL_TIME || category !== "" || status !== "" || query !== "";
 
@@ -111,6 +119,15 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
         try {
           const result = await requestExtraction(id);
           if (result.doc) upsert(result.doc);
+          const match = result.doc ? findMatches(initialTxs, [result.doc], loadDismissed())[0] : undefined;
+          const tx = match && initialTxs.find((t) => t.id === match.txId);
+          if (tx) {
+            const page = tx.source === "card" ? "/card" : "/bank";
+            toast(`${result.doc!.vendor || "Receipt"} matches a ${tx.source === "card" ? "card" : "bank"} payment`, {
+              duration: 8000,
+              action: { label: "Review", onClick: () => router.push(`${page}?tab=check`) },
+            });
+          }
           if (result.error) toast(result.error, { tone: "error" });
           if (result.notice === "not_configured" && !warnedNotConfigured) {
             warnedNotConfigured = true;
@@ -127,7 +144,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
         }
       });
     },
-    [readLimit, upsert],
+    [readLimit, upsert, initialTxs, router],
   );
 
   const addFiles = useCallback(
@@ -363,7 +380,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="/" email={email} onAccount={() => setDialog("account")}>
+      <AppHeader active="/" email={email} badges={pending} onAccount={() => setDialog("account")}>
         <FileButton
           accept="image/*"
           capture

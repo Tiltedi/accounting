@@ -41,10 +41,11 @@ export function formatMonth(isoMonth: string) {
 }
 
 // Sums amounts per currency, largest first.
-export function totalsByCurrency(docs: { total: number | null; currency: string | null }[]) {
+// Card statements are left out: their purchases have receipts of their own.
+export function totalsByCurrency(docs: { total: number | null; currency: string | null; doc_type?: string | null }[]) {
   const sums = new Map<string, number>();
   for (const doc of docs) {
-    if (doc.total == null) continue;
+    if (doc.total == null || doc.doc_type === "statement") continue;
     const key = doc.currency ?? "";
     sums.set(key, (sums.get(key) ?? 0) + doc.total);
   }

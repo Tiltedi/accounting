@@ -10,10 +10,18 @@ type Row = Database["public"]["Tables"]["bank_transactions"]["Row"];
 
 export type Transaction = Pick<
   Row,
-  "id" | "import_id" | "account" | "booked_on" | "amount" | "currency" | "counterparty" | "description" | "document_id"
-> & { status: "unmatched" | "matched" | "no_receipt"; matched_by: "auto" | "manual" | null };
+  "id" | "import_id" | "account" | "booked_on" | "amount" | "currency" | "counterparty" | "description" | "document_id" | "statement_id" | "note"
+> & {
+  status: "unmatched" | "matched" | "no_receipt";
+  matched_by: "auto" | "manual" | null;
+  source: Source;
+};
 
-export const TX_COLUMNS = "id,import_id,account,booked_on,amount,currency,counterparty,description,document_id,status,matched_by" as const;
+// "bank": the current account's CSV. "card": lines of a credit card statement.
+export type Source = "bank" | "card";
+
+export const TX_COLUMNS =
+  "id,import_id,account,booked_on,amount,currency,counterparty,description,document_id,statement_id,note,status,matched_by,source" as const;
 
 export async function fetchAllTransactions(supabase: Client): Promise<Transaction[]> {
   const pageSize = 1000;
@@ -28,6 +36,52 @@ export async function fetchAllTransactions(supabase: Client): Promise<Transactio
     if (error) throw error;
     txs.push(...(data as Transaction[]));
     if (data.length < pageSize) return txs;
+  }
+}
+
+// ----- Rules ------------------------------------------------------------------
+
+// Lines that never need a receipt: bank fees, salary, rent, suppliers that
+// e-invoice straight into the accounting tool.
+export type Rule = Pick<Database["public"]["Tables"]["bank_rules"]["Row"], "id" | "pattern" | "exact" | "label"> & {
+  field: "counterparty" | "description";
+};
+
+export const RULE_COLUMNS = "id,field,pattern,exact,label" as const;
+
+export async function fetchRules(supabase: Client): Promise<Rule[]> {
+  const { data, error } = await supabase.from("bank_rules").select(RULE_COLUMNS).order("created_at");
+  if (error) throw error;
+  return data as Rule[];
+}
+
+const squash = (text: string) => text.toLowerCase().replace(/\s+/g, " ").trim();
+
+export function ruleFor(tx: Pick<Transaction, "counterparty" | "description">, rules: Rule[]) {
+  return rules.find((rule) => {
+    const value = squash(tx[rule.field] ?? "");
+    const pattern = squash(rule.pattern);
+    return rule.exact ? value === pattern : value.includes(pattern);
+  });
+}
+
+// ----- Dismissed suggestions (this browser only) --------------------------------
+
+const DISMISSED_KEY = "bank:dismissed";
+
+export function loadDismissed() {
+  try {
+    return new Set<string>(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]"));
+  } catch {
+    return new Set<string>();
+  }
+}
+
+export function saveDismissed(dismissed: Set<string>) {
+  try {
+    localStorage.setItem(DISMISSED_KEY, JSON.stringify([...dismissed]));
+  } catch {
+    // Private mode: the dismissal lasts until reload.
   }
 }
 
@@ -296,8 +350,8 @@ export function expectedAmount(doc: Pick<Doc, "total" | "category">) {
   return doc.category === "Income" ? doc.total : -doc.total;
 }
 
-// Pairs open bank lines with unlinked receipts. `sure` pairs are safe to
-// link automatically; the rest are suggestions to confirm.
+// Pairs open lines with unlinked receipts. Every pair waits for approval;
+// `sure` ones (unambiguous) can be approved in one go.
 export function findMatches(txs: Transaction[], docs: Doc[], dismissed: Set<string> = new Set()): Match[] {
   const linked = new Set(txs.map((t) => t.document_id).filter(Boolean) as string[]);
   const openTxs = txs.filter((t) => t.status === "unmatched");
@@ -307,6 +361,8 @@ export function findMatches(txs: Transaction[], docs: Doc[], dismissed: Set<stri
   for (const tx of openTxs) {
     for (const doc of openDocs) {
       if (dismissed.has(`${tx.id}:${doc.id}`)) continue;
+      // A card statement is paid from the bank account, never by the card itself.
+      if (doc.doc_type === "statement" && tx.source !== "bank") continue;
       const lag = daysBetween(doc.doc_date, tx.booked_on); // paid after the document date
       if (lag < -7 || lag > 60) continue;
       const names = nameScore(doc.vendor, tx);

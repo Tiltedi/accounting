@@ -15,6 +15,16 @@ exactly what your accountant needs.
   lack a receipt, which receipts have no payment, and can mark lines that
   need none (fees, transfers). Re-importing overlapping statements never
   duplicates lines.
+- **Card check**: upload a credit card statement (PDF, photo or CSV). Claude
+  lists every purchase so each one can get its receipt; the statement itself
+  is matched to the card settlement on the bank statement.
+- **Approval queue**: suggested matches are never linked silently. They wait
+  under *To approve*; unambiguous ones can be approved in one tap. A new
+  receipt that matches a payment shows a prompt, and the header shows how
+  many wait.
+- **Rules**: lines from payees that never need a receipt (bank fees, salary,
+  rent, suppliers that e-invoice via Peppol) are marked on import. Add one
+  from any line with *Always for …*, remove it under *No receipt needed*.
 - **Booked in accounting**: tick documents once they're in your accounting
   tool; filter by *Not booked*; after a download the app offers to mark them.
 - **Reading cost**: each document stores what Claude charged; the monthly
@@ -58,18 +68,20 @@ Remove the row to revoke access.
 
 ## Bank statements
 
-Any CSV export works. Common layouts (ING, Rabobank, bunq, Revolut, most
-English/Dutch/Italian/German headers) are recognised directly; for anything
+Any CSV export works. Common layouts (ING Belgium and Netherlands, Rabobank,
+bunq, Revolut, most English/Dutch/Italian/German headers) are recognised directly; for anything
 else Claude reads the first rows once to map the columns, and the file is
-then parsed in the browser. Only unambiguous matches are linked
-automatically (exact amount plus the vendor's name, or a unique amount paid
-within a week); the rest wait under *To check*.
+then parsed in the browser. Every suggested match waits under *To approve*;
+unambiguous ones (exact amount plus the vendor's name, or a unique amount
+paid within a week) can be approved all at once.
 
 ## Data
 
 - Table `public.documents`: one row per document, with row-level security.
-- Table `public.bank_transactions`: imported statement lines, linked to a
-  document when matched.
+- Table `public.bank_transactions`: imported statement lines (`source` bank
+  or card), linked to a document when matched. Card lines point to their
+  statement document and are deleted with it.
+- Table `public.bank_rules`: payees or descriptions that need no receipt.
 - Bucket `documents` (private, 25 MB per file): the files. Downloads use your
   session or short-lived signed links.
 - The schema lives in `supabase/migrations/`.

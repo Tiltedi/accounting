@@ -24,12 +24,16 @@ export const DOC_TYPES = [
   { value: "invoice", label: "Invoice" },
   { value: "receipt", label: "Receipt" },
   { value: "credit_note", label: "Credit note" },
+  { value: "statement", label: "Card statement" },
   { value: "other", label: "Other" },
 ] as const;
 
 export type DocType = (typeof DOC_TYPES)[number]["value"];
 
 export const DOC_TYPE_VALUES = DOC_TYPES.map((t) => t.value) as [DocType, ...DocType[]];
+
+// Card statements are only created from the Card page, never guessed.
+export const READ_DOC_TYPES = DOC_TYPE_VALUES.filter((t) => t !== "statement") as [DocType, ...DocType[]];
 
 export function docTypeLabel(value: string | null) {
   return DOC_TYPES.find((t) => t.value === value)?.label ?? "";

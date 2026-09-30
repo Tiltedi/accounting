@@ -16,6 +16,33 @@ export type Database = {
   }
   public: {
     Tables: {
+      bank_rules: {
+        Row: {
+          created_at: string
+          exact: boolean
+          field: string
+          id: string
+          label: string | null
+          pattern: string
+        }
+        Insert: {
+          created_at?: string
+          exact?: boolean
+          field: string
+          id?: string
+          label?: string | null
+          pattern: string
+        }
+        Update: {
+          created_at?: string
+          exact?: boolean
+          field?: string
+          id?: string
+          label?: string | null
+          pattern?: string
+        }
+        Relationships: []
+      }
       bank_transactions: {
         Row: {
           account: string | null
@@ -30,6 +57,9 @@ export type Database = {
           id: string
           import_id: string
           matched_by: string | null
+          note: string | null
+          source: string
+          statement_id: string | null
           status: string
         }
         Insert: {
@@ -45,6 +75,9 @@ export type Database = {
           id?: string
           import_id: string
           matched_by?: string | null
+          note?: string | null
+          source?: string
+          statement_id?: string | null
           status?: string
         }
         Update: {
@@ -60,9 +93,27 @@ export type Database = {
           id?: string
           import_id?: string
           matched_by?: string | null
+          note?: string | null
+          source?: string
+          statement_id?: string | null
           status?: string
         }
-        Relationships: []
+        Relationships: [
+          {
+            foreignKeyName: "bank_transactions_document_id_fkey"
+            columns: ["document_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+          {
+            foreignKeyName: "bank_transactions_statement_id_fkey"
+            columns: ["statement_id"]
+            isOneToOne: false
+            referencedRelation: "documents"
+            referencedColumns: ["id"]
+          },
+        ]
       }
       documents: {
         Row: {

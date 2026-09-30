@@ -182,8 +182,8 @@ function PanelBody({ supabase, doc, reading, payment, onClose, onSaved, onDelete
           {payment !== undefined && (
             <span className={payment ? "text-accent" : "text-muted"}>
               {payment
-                ? `Paid ${formatDay(payment.booked_on)} · ${formatMoney(Math.abs(payment.amount), payment.currency)}`
-                : "No bank payment linked"}
+                ? `Paid${payment.source === "card" ? " by card" : ""} ${formatDay(payment.booked_on)} · ${formatMoney(Math.abs(payment.amount), payment.currency)}`
+                : "No payment linked"}
             </span>
           )}
         </div>

@@ -1,13 +1,15 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
   CalendarDays,
   Check,
   ChevronDown,
+  CreditCard,
   FileSpreadsheet,
+  FileText,
   Landmark,
   Link2,
   LoaderCircle,
@@ -23,27 +25,17 @@ import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentPanel } from "@/components/document-panel";
 import { FileButton } from "@/components/file-button";
 import { toast } from "@/components/toaster";
-import { findMatches, type Match, type Transaction } from "@/lib/bank";
-import { applySureMatches, importStatement, linkTransaction } from "@/lib/bank-import";
+import { findMatches, loadDismissed, ruleFor, saveDismissed, RULE_COLUMNS, type Match, type Rule, type Source, type Transaction } from "@/lib/bank";
+import { applyRules, approveMatches, importStatement, linkTransaction, readCardStatement } from "@/lib/bank-import";
 import { ALL_TIME, inRange, rangeLabel, todayISO, type DateRange } from "@/lib/dates";
 import { compareDocs, type Doc } from "@/lib/documents";
 import { saveBlob, sanitizeFileName } from "@/lib/files";
 import { formatDay, formatMoney, formatMonth } from "@/lib/format";
 import { createClient } from "@/lib/supabase/client";
-import { requestExtraction, uploadDocument, prepareFile } from "@/lib/upload";
+import { DuplicateError, requestExtraction, uploadDocument, prepareFile } from "@/lib/upload";
 import { createXlsx } from "@/lib/xlsx";
 
-type Tab = "missing" | "check" | "matched" | "no_receipt" | "unpaid";
-
-const DISMISSED_KEY = "bank:dismissed";
-
-function loadDismissed() {
-  try {
-    return new Set<string>(JSON.parse(localStorage.getItem(DISMISSED_KEY) ?? "[]"));
-  } catch {
-    return new Set<string>();
-  }
-}
+type Tab = "missing" | "check" | "matched" | "no_receipt" | "unpaid" | "statements";
 
 function errorMessage(err: unknown) {
   if (err instanceof Error) return err.message;
@@ -56,20 +48,43 @@ function compareTxs(a: Transaction, b: Transaction) {
   return a.id < b.id ? -1 : 1;
 }
 
-export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[]; initialTxs: Transaction[]; email: string }) {
+// Counts of suggested matches waiting for approval, per page.
+export function pendingCounts(matches: Match[], txs: Transaction[]) {
+  const sourceOf = new Map(txs.map((t) => [t.id, t.source]));
+  const counts = { "/bank": 0, "/card": 0 };
+  for (const m of matches) counts[sourceOf.get(m.txId) === "card" ? "/card" : "/bank"]++;
+  return counts;
+}
+
+export function BankView({
+  source,
+  initialDocs,
+  initialTxs,
+  initialRules,
+  initialTab,
+  email,
+}: {
+  source: Source;
+  initialTab?: string;
+  initialDocs: Doc[];
+  initialTxs: Transaction[];
+  initialRules: Rule[];
+  email: string;
+}) {
+  const card = source === "card";
   const [supabase] = useState(createClient);
   const [docs, setDocs] = useState(initialDocs);
   const [txs, setTxs] = useState(initialTxs);
+  const [rules, setRules] = useState(initialRules);
   const [range, setRange] = useState<DateRange>(ALL_TIME);
   const [query, setQuery] = useState("");
-  const [tab, setTab] = useState<Tab>("missing");
+  const [tab, setTab] = useState<Tab>(initialTab === "check" ? "check" : "missing");
   const [dismissed, setDismissed] = useState<Set<string>>(() => new Set());
   const [dialog, setDialog] = useState<"dates" | "account" | null>(null);
   const [attachId, setAttachId] = useState<string | null>(null);
   const [openDocId, setOpenDocId] = useState<string | null>(null);
   const [reading, setReading] = useState<Set<string>>(() => new Set());
-  const [busy, setBusy] = useState<string | null>(null); // "import" or a transaction id
-  const applying = useRef(false);
+  const [busy, setBusy] = useState<string | null>(null); // "import", "approve" or a transaction id
 
   // Dismissed suggestions live in this browser only.
   useEffect(() => {
@@ -89,29 +104,20 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
     setDocs((prev) => [...prev.filter((d) => d.id !== doc.id), doc].sort(compareDocs));
   }, []);
 
-  // Link the unambiguous pairs automatically, whenever new ones appear.
-  useEffect(() => {
-    if (applying.current || !matches.some((m) => m.sure)) return;
-    applying.current = true;
-    applySureMatches(supabase, matches)
-      .then((saved) => saved.forEach(upsertTx))
-      .catch((err) => toast(errorMessage(err), { tone: "error" }))
-      .finally(() => {
-        applying.current = false;
-      });
-  }, [matches, supabase, upsertTx]);
+  const pending = useMemo(() => pendingCounts(matches, txs), [matches, txs]);
 
   // ----- Views -----------------------------------------------------------
 
   const q = query.trim().toLowerCase();
+  const ownTxs = useMemo(() => txs.filter((t) => t.source === source), [txs, source]);
   const visibleTxs = useMemo(
     () =>
-      txs.filter(
+      ownTxs.filter(
         (t) =>
           inRange(t.booked_on, range) &&
           (!q || `${t.counterparty ?? ""} ${t.description ?? ""} ${Math.abs(t.amount).toFixed(2)}`.toLowerCase().includes(q)),
       ),
-    [txs, range, q],
+    [ownTxs, range, q],
   );
 
   const groups = useMemo(() => {
@@ -131,9 +137,9 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
   // Receipts inside the statement period with no bank line: paid in cash,
   // from another account, or not paid yet.
   const unpaid = useMemo(() => {
-    if (!txs.length) return [];
-    const first = txs[txs.length - 1].booked_on;
-    const last = txs[0].booked_on;
+    if (card || !ownTxs.length) return [];
+    const first = ownTxs[ownTxs.length - 1].booked_on;
+    const last = ownTxs[0].booked_on;
     const linked = new Set(txs.map((t) => t.document_id).filter(Boolean));
     const suggested = new Set(matches.map((m) => m.docId));
     return docs.filter(
@@ -146,42 +152,97 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
         inRange(d.doc_date, range) &&
         (!q || `${d.vendor ?? ""} ${d.description ?? ""} ${d.file_name}`.toLowerCase().includes(q)),
     );
-  }, [docs, txs, matches, range, q]);
+  }, [card, docs, ownTxs, txs, matches, range, q]);
+
+  const statements = useMemo(
+    () => (card ? docs.filter((d) => d.doc_type === "statement" && inRange(d.doc_date, range)) : []),
+    [card, docs, range],
+  );
+
+  const sureMatches = useMemo(() => {
+    const visible = new Set(groups.check.map((t) => t.id));
+    return matches.filter((m) => m.sure && visible.has(m.txId));
+  }, [matches, groups.check]);
 
   const missingTotal = groups.missing.reduce((sum, t) => sum + (t.amount < 0 ? -t.amount : 0), 0);
 
   // ----- Actions ---------------------------------------------------------
 
+  // Rules first: lines that never need a receipt leave the queue straight away.
+  async function withRules(added: Transaction[], using = rules) {
+    const covered = await applyRules(supabase, added, using);
+    const byId = new Map(covered.map((t) => [t.id, t]));
+    return { txs: added.map((t) => byId.get(t.id) ?? t), covered: covered.length };
+  }
+
+  function undoImport(ids: string[], statementId?: string) {
+    return {
+      duration: 8000,
+      action: {
+        label: "Undo",
+        onClick: () => {
+          const request = statementId
+            ? supabase.from("documents").delete().eq("id", statementId) // its lines go with it
+            : supabase.from("bank_transactions").delete().in("id", ids);
+          void request.then(({ error }) => {
+            if (error) return toast(error.message, { tone: "error" });
+            setTxs((prev) => prev.filter((t) => !ids.includes(t.id)));
+            if (statementId) setDocs((prev) => prev.filter((d) => d.id !== statementId));
+          });
+        },
+      },
+    };
+  }
+
+  async function importCsv(file: File) {
+    const { added, skipped } = await importStatement(supabase, file, source);
+    const { txs: saved, covered } = await withRules(added);
+    setTxs((prev) => [...prev, ...saved].sort(compareTxs));
+    const parts = [
+      added.length ? `Imported ${added.length} ${added.length === 1 ? "line" : "lines"}` : "Nothing new",
+      covered ? `${covered} need no receipt` : "",
+      skipped ? `${skipped} already here` : "",
+    ].filter(Boolean);
+    toast(parts.join(" · "), added.length ? undoImport(added.map((t) => t.id)) : {});
+  }
+
+  // A card statement PDF or photo: stored as a document, then Claude lists its purchases.
+  async function importCardStatement(file: File) {
+    let doc: Doc;
+    try {
+      doc = await uploadDocument(supabase, await prepareFile(file));
+    } catch (err) {
+      if (err instanceof DuplicateError) {
+        const existing = docsById.get(err.docId);
+        if (existing?.doc_type !== "statement") throw new Error(`${file.name} is already in Documents`);
+        doc = existing;
+      } else throw err;
+    }
+    upsertDoc({ ...doc, status: "processing" });
+    const result = await readCardStatement(doc.id);
+    if (result.doc) upsertDoc(result.doc);
+    if (result.error) throw new Error(result.error);
+    if (result.notice) throw new Error("Saved, but it couldn't be read automatically.");
+    const known = new Set(txs.map((t) => t.id));
+    const fresh = result.txs.filter((t) => !known.has(t.id));
+    const { txs: saved, covered } = await withRules(fresh);
+    const savedById = new Map(saved.map((t) => [t.id, t]));
+    const ids = new Set(result.txs.map((t) => t.id));
+    setTxs((prev) => [...prev.filter((t) => !ids.has(t.id)), ...result.txs.map((t) => savedById.get(t.id) ?? t)].sort(compareTxs));
+    toast(
+      [`${result.txs.length} card ${result.txs.length === 1 ? "line" : "lines"}`, covered ? `${covered} need no receipt` : ""].filter(Boolean).join(" · "),
+      fresh.length && fresh.length === result.txs.length ? undoImport(fresh.map((t) => t.id), doc.id) : {},
+    );
+  }
+
   async function onImport(files: File[]) {
     setBusy("import");
     try {
       for (const file of files) {
-        const { added, skipped } = await importStatement(supabase, file);
-        setTxs((prev) => [...prev, ...added].sort(compareTxs));
-        const ids = added.map((t) => t.id);
-        toast(
-          added.length
-            ? `Imported ${added.length} ${added.length === 1 ? "line" : "lines"}${skipped ? ` · ${skipped} already here` : ""}`
-            : `Nothing new · ${skipped} already here`,
-          ids.length
-            ? {
-                duration: 8000,
-                action: {
-                  label: "Undo",
-                  onClick: () => {
-                    void supabase
-                      .from("bank_transactions")
-                      .delete()
-                      .in("id", ids)
-                      .then(({ error }) => {
-                        if (error) return toast(error.message, { tone: "error" });
-                        setTxs((prev) => prev.filter((t) => !ids.includes(t.id)));
-                      });
-                  },
-                },
-              }
-            : {},
-        );
+        const csv = /\.(csv|txt|tsv)$/i.test(file.name) || /csv|text\/plain/.test(file.type);
+        if (csv) await importCsv(file);
+        else if (card) await importCardStatement(file);
+        else throw new Error("Use the CSV export from your bank's website.");
       }
       setTab("missing");
     } catch (err) {
@@ -192,11 +253,57 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
   }
 
   async function link(tx: Transaction, docId: string | null, status: Transaction["status"]) {
-    // Unlinking must stick: otherwise the automatic matcher links it straight back.
+    // Unlinking must stick: otherwise the same suggestion comes straight back.
     if (!docId && tx.document_id) dismiss({ txId: tx.id, docId: tx.document_id, score: 0, sure: false });
     setBusy(tx.id);
     try {
-      upsertTx(await linkTransaction(supabase, tx.id, { document_id: docId, status, matched_by: docId ? "manual" : null }));
+      const saved = await linkTransaction(supabase, tx.id, { document_id: docId, status, matched_by: docId ? "manual" : null, note: null });
+      upsertTx(saved);
+      if (status === "no_receipt" && saved.counterparty && !ruleFor(saved, rules)) {
+        const name = saved.counterparty;
+        toast("No receipt needed", {
+          duration: 8000,
+          action: { label: `Always for ${name.length > 24 ? `${name.slice(0, 22)}…` : name}`, onClick: () => void addRule(name) },
+        });
+      }
+    } catch (err) {
+      toast(errorMessage(err), { tone: "error" });
+    } finally {
+      setBusy(null);
+    }
+  }
+
+  async function addRule(counterparty: string) {
+    const { data, error } = await supabase
+      .from("bank_rules")
+      .insert({ field: "counterparty", pattern: counterparty, exact: true, label: null })
+      .select(RULE_COLUMNS)
+      .single();
+    if (error) return toast(error.message, { tone: "error" });
+    const rule = data as Rule;
+    setRules((prev) => [...prev, rule]);
+    try {
+      const { txs: saved, covered } = await withRules(txs, [rule]);
+      saved.forEach(upsertTx);
+      toast(covered ? `Rule added · ${covered} more ${covered === 1 ? "line" : "lines"} need no receipt` : "Rule added");
+    } catch (err) {
+      toast(errorMessage(err), { tone: "error" });
+    }
+  }
+
+  async function deleteRule(rule: Rule) {
+    const { error } = await supabase.from("bank_rules").delete().eq("id", rule.id);
+    if (error) return toast(error.message, { tone: "error" });
+    setRules((prev) => prev.filter((r) => r.id !== rule.id));
+    toast(`Rule removed · lines already marked stay as they are`);
+  }
+
+  async function approveAll() {
+    setBusy("approve");
+    try {
+      const saved = await approveMatches(supabase, sureMatches);
+      saved.forEach(upsertTx);
+      toast(`Matched ${saved.length} ${saved.length === 1 ? "line" : "lines"}`);
     } catch (err) {
       toast(errorMessage(err), { tone: "error" });
     } finally {
@@ -207,11 +314,7 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
   function dismiss(match: Match) {
     const next = new Set(dismissed).add(`${match.txId}:${match.docId}`);
     setDismissed(next);
-    try {
-      localStorage.setItem(DISMISSED_KEY, JSON.stringify([...next]));
-    } catch {
-      // Private mode: the dismissal lasts until reload.
-    }
+    saveDismissed(next);
   }
 
   const read = useCallback(
@@ -279,35 +382,38 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
 
   const attachTx = attachId ? (txs.find((t) => t.id === attachId) ?? null) : null;
   const openDoc = openDocId ? (docsById.get(openDocId) ?? null) : null;
-  const list = tab === "unpaid" ? [] : groups[tab];
+  const list = tab === "unpaid" || tab === "statements" ? [] : groups[tab];
+  const empty = ownTxs.length === 0 && (!card || !docs.some((d) => d.doc_type === "statement"));
 
   const tabs: { id: Tab; label: string; count: number }[] = [
     { id: "missing", label: "Missing receipt", count: groups.missing.length },
-    { id: "check", label: "To check", count: groups.check.length },
+    { id: "check", label: "To approve", count: groups.check.length },
     { id: "matched", label: "Matched", count: groups.matched.length },
     { id: "no_receipt", label: "No receipt needed", count: groups.no_receipt.length },
-    { id: "unpaid", label: "Receipts not in bank", count: unpaid.length },
+    card
+      ? { id: "statements", label: "Statements", count: statements.length }
+      : { id: "unpaid", label: "Receipts not in bank", count: unpaid.length },
   ];
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="/bank" email={email} onAccount={() => setDialog("account")}>
+      <AppHeader active={card ? "/card" : "/bank"} email={email} badges={pending} onAccount={() => setDialog("account")}>
         <FileButton
-          accept=".csv,.txt,.tsv,text/csv,text/plain"
+          accept={card ? ".pdf,.csv,.txt,application/pdf,image/*,text/csv" : ".csv,.txt,.tsv,text/csv,text/plain"}
           multiple
           disabled={busy === "import"}
           onFiles={onImport}
-          label="Import statement"
+          label={card ? "Add statement" : "Import statement"}
           className="flex h-10 items-center gap-2 rounded-full bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover sm:px-4"
         >
           {busy === "import" ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />}
-          <span className="hidden sm:inline">Import statement</span>
+          <span className="hidden sm:inline">{card ? "Add statement" : "Import statement"}</span>
         </FileButton>
       </AppHeader>
 
       <main className="mx-auto max-w-5xl px-4 pt-4 pb-24 sm:px-6 sm:pt-6">
-        {txs.length === 0 ? (
-          <BankEmptyState />
+        {empty ? (
+          <BankEmptyState card={card} busy={busy === "import"} />
         ) : (
           <>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
@@ -365,6 +471,51 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
               ))}
             </div>
 
+            {tab === "check" && sureMatches.length > 0 && (
+              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm">
+                <span className="min-w-0 flex-1 text-accent">
+                  <span className="font-semibold">{sureMatches.length}</span> sure {sureMatches.length === 1 ? "match" : "matches"}: same amount, plus the name or a close date.
+                </span>
+                <button
+                  type="button"
+                  onClick={approveAll}
+                  disabled={busy === "approve"}
+                  className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+                >
+                  {busy === "approve" ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}
+                  Approve {sureMatches.length === 1 ? "" : "all "}
+                  {sureMatches.length}
+                </button>
+              </div>
+            )}
+
+            {tab === "no_receipt" && rules.length > 0 && (
+              <div className="mt-4 px-1">
+                <p className="text-sm text-muted">Automatically marked when imported:</p>
+                <ul className="mt-2 flex flex-wrap gap-2">
+                  {rules.map((rule) => (
+                    <li
+                      key={rule.id}
+                      className="flex items-center gap-1 rounded-full border border-rule-strong bg-card py-1 pr-1 pl-3 text-sm"
+                    >
+                      <span className="max-w-64 truncate">
+                        {rule.field === "description" ? `“${rule.pattern}”` : rule.pattern}
+                        {rule.label ? <span className="text-muted"> · {rule.label}</span> : null}
+                      </span>
+                      <button
+                        type="button"
+                        onClick={() => void deleteRule(rule)}
+                        aria-label={`Remove rule ${rule.pattern}`}
+                        className="grid size-6 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
+                      >
+                        <X className="size-3.5" />
+                      </button>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+            )}
+
             {tab === "missing" && groups.missing.length > 0 && (
               <div className="mt-4 flex items-center gap-3 px-1 text-sm">
                 {missingTotal > 0 && (
@@ -387,9 +538,11 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
             <div className="mt-4">
               {tab === "unpaid" ? (
                 <UnpaidList docs={unpaid} onOpen={setOpenDocId} />
+              ) : tab === "statements" ? (
+                <StatementList docs={statements} txs={txs} onOpen={setOpenDocId} />
               ) : list.length === 0 ? (
                 <p className="mt-10 text-center font-medium text-muted">
-                  {tab === "missing" ? "Every payment has a receipt." : tab === "check" ? "Nothing to check." : "Nothing here."}
+                  {tab === "missing" ? "Every payment has a receipt." : tab === "check" ? "Nothing to approve." : "Nothing here."}
                 </p>
               ) : (
                 <TxList
@@ -445,15 +598,20 @@ export function BankView({ initialDocs, initialTxs, email }: { initialDocs: Doc[
   );
 }
 
-function BankEmptyState() {
+function BankEmptyState({ card, busy }: { card: boolean; busy: boolean }) {
+  const Icon = busy ? LoaderCircle : card ? CreditCard : Landmark;
   return (
     <div className="ruled mt-6 flex animate-rise flex-col items-center rounded-3xl border border-dashed border-rule-strong px-6 py-16 text-center">
       <div className="grid size-12 place-items-center rounded-2xl bg-accent text-accent-ink">
-        <Landmark className="size-6" />
+        <Icon className={`size-6 ${busy ? "animate-spin" : ""}`} />
       </div>
-      <p className="mt-4 text-lg font-semibold">Import a bank statement</p>
+      <p className="mt-4 text-lg font-semibold">
+        {busy ? "Reading statement…" : card ? "Add a credit card statement" : "Import a bank statement"}
+      </p>
       <p className="mt-1 max-w-sm text-sm text-muted">
-        Download a CSV from your bank’s website and import it. Payments are matched to your receipts. Your bank is never connected.
+        {card
+          ? "Upload the statement PDF (or CSV). Every purchase on it is listed so you can add its receipt."
+          : "Download a CSV from your bank’s website and import it. Payments are matched to your receipts. Your bank is never connected."}
       </p>
     </div>
   );
@@ -468,6 +626,15 @@ function monthGroups<T>(items: T[], dateOf: (item: T) => string) {
     else groups.push({ month, items: [item] });
   }
   return groups;
+}
+
+function docLabel(doc: Doc) {
+  return doc.doc_type === "statement" ? `${doc.vendor || "Card"} statement` : doc.vendor || doc.file_name;
+}
+
+// Money in: a sales invoice on the bank account, a refund (credit note) on the card.
+function paperFor(tx: Transaction) {
+  return tx.amount < 0 ? "receipt" : tx.source === "card" ? "credit note" : "invoice";
 }
 
 function Amount({ value, currency }: { value: number; currency: string | null }) {
@@ -537,23 +704,25 @@ function TxList({
                           className="flex min-w-0 items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-sm font-medium text-accent"
                         >
                           <Check className="size-3.5 shrink-0" />
-                          <span className="truncate">{linked ? linked.vendor || linked.file_name : "Receipt"}</span>
-                          {tx.matched_by === "auto" && <span className="shrink-0 text-xs font-normal opacity-70">auto</span>}
+                          <span className="truncate">{linked ? docLabel(linked) : "Receipt"}</span>
                         </button>
                         <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Unlink">
                           <Undo2 className="size-3.5" /> Unlink
                         </SmallButton>
                       </>
                     ) : tx.status === "no_receipt" ? (
-                      <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Undo">
-                        <Undo2 className="size-3.5" /> Needs receipt
-                      </SmallButton>
+                      <>
+                        {tx.note && <span className="rounded-full bg-ink/5 px-3 py-1 text-sm text-muted">{tx.note}</span>}
+                        <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Undo">
+                          <Undo2 className="size-3.5" /> Needs receipt
+                        </SmallButton>
+                      </>
                     ) : suggestion && suggested ? (
                       <>
                         <span className="flex min-w-0 items-center gap-1.5 rounded-full border border-dashed border-accent px-3 py-1 text-sm">
                           <Link2 className="size-3.5 shrink-0 text-accent" />
                           <button type="button" onClick={() => onOpenDoc(suggested.id)} className="truncate font-medium hover:underline">
-                            {suggested.vendor || suggested.file_name}
+                            {docLabel(suggested)}
                           </button>
                           <span className="nums shrink-0 text-muted">
                             {formatDay(suggested.doc_date)}
@@ -584,10 +753,10 @@ function TxList({
                           onClick={() => onAttach(tx.id)}
                           className="flex h-8 items-center gap-1.5 rounded-full border border-rule-strong px-3 text-sm font-semibold hover:bg-ink/5"
                         >
-                          <Link2 className="size-3.5" /> {tx.amount > 0 ? "Add invoice" : "Add receipt"}
+                          <Link2 className="size-3.5" /> Add {paperFor(tx)}
                         </button>
                         <SmallButton onClick={() => onLink(tx, null, "no_receipt")} label="No receipt needed">
-                          {tx.amount > 0 ? "No invoice needed" : "No receipt needed"}
+                          No {paperFor(tx)} needed
                         </SmallButton>
                       </>
                     )}
@@ -638,5 +807,39 @@ function UnpaidList({ docs, onOpen }: { docs: Doc[]; onOpen: (id: string) => voi
         ))}
       </ul>
     </>
+  );
+}
+
+function StatementList({ docs, txs, onOpen }: { docs: Doc[]; txs: Transaction[]; onOpen: (id: string) => void }) {
+  if (!docs.length) return <p className="mt-10 text-center font-medium text-muted">No statements yet.</p>;
+  return (
+    <ul className="overflow-hidden rounded-2xl border border-rule bg-card">
+      {docs.map((doc) => {
+        const lines = txs.filter((t) => t.statement_id === doc.id);
+        const open = lines.filter((t) => t.status === "unmatched").length;
+        const paid = txs.find((t) => t.document_id === doc.id);
+        return (
+          <li key={doc.id} className="border-b border-rule last:border-b-0">
+            <button type="button" onClick={() => onOpen(doc.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ink/[0.025]">
+              <FileText className="size-4 shrink-0 text-muted" aria-hidden="true" />
+              <span className="min-w-0 flex-1">
+                <span className="block truncate font-medium">
+                  {doc.status === "processing" ? "Reading…" : `${doc.vendor || "Card"} · ${formatDay(doc.doc_date)}`}
+                </span>
+                <span className="mt-0.5 block truncate text-[0.8rem] text-muted">
+                  {lines.length} {lines.length === 1 ? "line" : "lines"}
+                  {open ? ` · ${open} without receipt` : lines.length ? " · all done" : ""}
+                  {" · "}
+                  {paid ? `paid ${formatDay(paid.booked_on)}` : "payment not in bank yet"}
+                </span>
+              </span>
+              <span className="nums shrink-0 text-[0.95rem] font-medium">
+                {doc.total != null ? formatMoney(doc.total, doc.currency) : ""}
+              </span>
+            </button>
+          </li>
+        );
+      })}
+    </ul>
   );
 }
