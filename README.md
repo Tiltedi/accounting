@@ -102,3 +102,9 @@ npm run dev
 ```
 
 `npm run lint` and `npx tsc --noEmit` should both pass before pushing.
+End-to-end tests: `./e2e/setup.sh` once, then `./e2e/test.sh` (see `e2e/README.md`).
+
+## For AI agents
+
+`CLAUDE.md` is the entry point; project memory (status, decisions, architecture, operations, user
+preferences) lives in `docs/agents/`. Run `/handoff` at the end of a session to update it.

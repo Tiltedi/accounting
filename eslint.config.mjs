@@ -12,6 +12,8 @@ const eslintConfig = defineConfig([
     "out/**",
     "build/**",
     "next-env.d.ts",
+    // End-to-end harness: plain Node scripts, run separately (e2e/README.md).
+    "e2e/**",
   ]),
 ]);
 

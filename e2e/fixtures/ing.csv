@@ -1,0 +1,8 @@
+"Datum";"Naam / Omschrijving";"Rekening";"Tegenrekening";"Code";"Af Bij";"Bedrag (EUR)";"Mutatiesoort";"Mededelingen"
+"20260804";"Bar Centrale Amsterdam";"NL01INGB0001234567";"";"BA";"Af";"49,90";"Betaalautomaat";"Pasvolgnr: 001 04-08-2026 13:05"
+"20260903";"AMAZON EU SARL";"NL01INGB0001234567";"LU12345";"ID";"Af";"129,00";"iDEAL";"Order 305-1234"
+"20260810";"NS Groep IZ NS Reizigers";"NL01INGB0001234567";"";"BA";"Af";"89,50";"Betaalautomaat";"Utrecht Centraal"
+"20260921";"GOOGLE *WORKSPACE";"NL01INGB0001234567";"";"BA";"Af";"11,36";"Betaalautomaat";"USD 12,34 koers 0,9206"
+"20260915";"Kosten OranjePakket";"NL01INGB0001234567";"";"DV";"Af";"2,95";"Diversen";"Periode 01-08-2026 t/m 31-08-2026"
+"20260918";"Hotel Adlon Berlin";"NL01INGB0001234567";"";"BA";"Af";"310,00";"Betaalautomaat";""
+"20260925";"Client Studio BV";"NL01INGB0001234567";"NL99RABO0123456789";"OV";"Bij";"2.500,00";"Overschrijving";"Factuur 2026-014"
