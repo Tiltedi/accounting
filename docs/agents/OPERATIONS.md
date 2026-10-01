@@ -40,7 +40,9 @@
 
 `e2e/` runs the real app (production build) against `e2e/mock-server.mjs`, which imitates Supabase auth,
 PostgREST, storage and the Anthropic API (canned answers by file name / prompt). See `e2e/README.md`.
-`./e2e/setup.sh` once per container, then `./e2e/test.sh` (≈5 min, 64 checks).
+`./e2e/setup.sh` once per container, then `./e2e/test.sh` (≈2 min, 67 checks).
+Don't put `next-server` or `mock-server.mjs` in an ad-hoc shell command: `start.sh`/`test.sh` kill processes
+whose command line matches, including the calling shell.
 When adding a feature: extend the mock for new tables/columns and add a step to `run-bank.js` or `run.js`.
 
 ## Model and cost reference

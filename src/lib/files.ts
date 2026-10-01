@@ -154,16 +154,22 @@ export function sanitizeFileName(name: string) {
   );
 }
 
-// "2026-09-12 Amazon 49.90 EUR.pdf"
+// "2026-09-12 Amazon 49.90 EUR.pdf", "2026-09-01 ING card statement 236.02 EUR.pdf"
 export function downloadName(doc: {
   doc_date: string;
   vendor: string | null;
   file_name: string;
+  doc_type?: string | null;
   total: number | null;
   currency: string | null;
   mime_type: string;
 }) {
-  const stem = doc.vendor || doc.file_name.replace(/\.[^.]+$/, "");
+  const stem =
+    doc.doc_type === "statement"
+      ? doc.vendor
+        ? `${doc.vendor} card statement`
+        : "Card statement"
+      : doc.vendor || doc.file_name.replace(/\.[^.]+$/, "");
   const amount = doc.total != null ? ` ${doc.total.toFixed(2)}${doc.currency ? ` ${doc.currency}` : ""}` : "";
   return `${sanitizeFileName(`${doc.doc_date} ${stem}${amount}`)}.${extensionFor(doc.mime_type, doc.file_name)}`;
 }

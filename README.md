@@ -8,8 +8,11 @@ exactly what your accountant needs.
 - Each document is **read automatically**: vendor, date, total, VAT,
   currency, invoice number and a category.
 - **Find** anything with the date range picker, category filter and search.
-- **Download** one file, a selection, or everything in view as a ZIP with a
-  `Summary.xlsx` listing every document.
+- **Download by month** for your accounting tool: tick months, or a whole
+  quarter in one tap, and get a ZIP with a folder per month that holds only
+  the documents, all as PDFs (photos are converted; card statements can be
+  left out), plus a `Summary.xlsx` listing every document. One file or a
+  selection still downloads as it is.
 - **Bank check** (no bank connection): import the CSV statement from your
   bank's website. Payments are matched to receipts; you see which payments
   lack a receipt, which receipts have no payment, and can mark lines that

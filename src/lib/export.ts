@@ -1,7 +1,8 @@
 import { docTypeLabel } from "@/lib/categories";
 import { fromISODate } from "@/lib/dates";
-import { BUCKET, type Client, type Doc } from "@/lib/documents";
-import { downloadName, eachLimit, sanitizeFileName, saveBlob } from "@/lib/files";
+import { BUCKET, compareDocs, isImage, type Client, type Doc } from "@/lib/documents";
+import { downloadName, eachLimit, imageToJpeg, jpegsToPdf, sanitizeFileName, saveBlob } from "@/lib/files";
+import { monthName } from "@/lib/format";
 import { createXlsx, type Cell, type Column } from "@/lib/xlsx";
 import { createZip, type ZipEntry } from "@/lib/zip";
 
@@ -29,25 +30,36 @@ const COLUMNS: Column[] = [
   { header: "File", width: 48 },
 ];
 
-// Zips the documents with a Summary.xlsx listing each one.
+// Zips the documents with a Summary.xlsx listing each one. `byMonth` makes the
+// package for the accounting tool: oldest first, a folder per month holding
+// only documents ("2026-07 July/…"), and pictures turned into PDFs.
 export async function downloadZip(
   supabase: Client,
   docs: Doc[],
   zipName: string,
   onProgress: (done: number, total: number) => void,
+  { byMonth = false } = {},
 ) {
-  const names = uniqueNames(docs);
-  const entries: ZipEntry[] = new Array(docs.length);
+  const list = byMonth ? [...docs].sort((a, b) => compareDocs(b, a)) : docs;
+  const files: { data: Uint8Array; mime: string }[] = new Array(list.length);
   let done = 0;
-  onProgress(0, docs.length);
+  onProgress(0, list.length);
 
-  await eachLimit(docs, 4, async (doc, i) => {
+  await eachLimit(list, 4, async (doc, i) => {
     const blob = await fetchFile(supabase, doc);
-    entries[i] = { name: names[i], data: new Uint8Array(await blob.arrayBuffer()), date: fromISODate(doc.doc_date) };
-    onProgress(++done, docs.length);
+    files[i] = byMonth && isImage(doc) ? await imageAsPdf(blob, doc.mime_type) : { data: await bytes(blob), mime: doc.mime_type };
+    onProgress(++done, list.length);
   });
 
-  const rows: Cell[][] = docs.map((doc, i) => [
+  const names = uniqueNames(
+    list.map((doc, i) => {
+      const name = downloadName({ ...doc, mime_type: files[i].mime });
+      return byMonth ? `${monthFolder(doc.doc_date)}/${name}` : name;
+    }),
+  );
+  const entries: ZipEntry[] = list.map((doc, i) => ({ name: names[i], data: files[i].data, date: fromISODate(doc.doc_date) }));
+
+  const rows: Cell[][] = list.map((doc, i) => [
     { type: "date", value: doc.doc_date },
     { type: "text", value: doc.vendor },
     { type: "text", value: doc.description },
@@ -65,10 +77,30 @@ export async function downloadZip(
   saveBlob(createZip([{ name: "Summary.xlsx", data: summary }, ...entries]), `${sanitizeFileName(zipName)}.zip`);
 }
 
-function uniqueNames(docs: Doc[]) {
+async function bytes(blob: Blob) {
+  return new Uint8Array(await blob.arrayBuffer());
+}
+
+// A picture as a one-page PDF, for tools that only take PDFs. Keeps the
+// original when the browser can't decode it (e.g. HEIC outside Safari).
+async function imageAsPdf(blob: Blob, mime: string) {
+  try {
+    const page = await imageToJpeg(new Blob([blob], { type: mime }), 2400, 0.9);
+    return { data: await bytes(await jpegsToPdf([page])), mime: "application/pdf" };
+  } catch {
+    return { data: await bytes(blob), mime };
+  }
+}
+
+// "2026-07-21" → "2026-07 July": sorts in order and reads well.
+function monthFolder(isoDate: string) {
+  const month = isoDate.slice(0, 7);
+  return `${month} ${monthName(month)}`;
+}
+
+function uniqueNames(names: string[]) {
   const seen = new Map<string, number>();
-  return docs.map((doc) => {
-    const name = downloadName(doc);
+  return names.map((name) => {
     const key = name.toLowerCase();
     const count = seen.get(key) ?? 0;
     seen.set(key, count + 1);

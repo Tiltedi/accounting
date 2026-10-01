@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 2026-10-01 by the handoff of session 1 (build-out sessions 2026-09-29 → 2026-10-01)._
+_Last updated: 2026-10-01 by session 2 (download by month)._
 
 ## Live now (`main` = production, commit `2248f22`)
 
@@ -18,10 +18,12 @@ _Last updated: 2026-10-01 by the handoff of session 1 (build-out sessions 2026-0
 
 - Bank account BE60… (ING): 97 lines, July–Sept 2026, all with `bank_ref`; 25 matched, 38 no receipt needed, 34 open.
 - Card statements: July (€565.91, 19 lines), Aug (€349.64, 10), Sept (€236.02, 4); Aug and Sept linked to their bank payment; July's waits under To approve.
-- ~10 receipts uploaded (Sept 2026 scans).
+- 43 documents, all PDF, dated Jul–Sep 2026: 40 invoices/receipts + the 3 card statements; none marked booked.
 
 ## Open items / waiting on the user
 
+- **Download by month** (Documents → *Download* with nothing selected): built in session 2, lint/tsc/e2e
+  (67 checks) green, committed on `main` but not pushed — waits for the user's "push to main".
 - July card statement ↔ bank line 16 Jul €565.91: user to approve under Bank → To approve.
 - Many card lines and ~34 bank lines still need receipts (user's ongoing work).
 - WinAuditor (accountant's tool): no public API found. Idea: ask the accountant whether the WinAuditor file has an inbox e-mail for purchase invoices → app could forward matched receipts. Not started.
@@ -33,8 +35,9 @@ _Last updated: 2026-10-01 by the handoff of session 1 (build-out sessions 2026-0
 - Send the user back to the requested page after login (today login always lands on Documents).
 - Read-only bank connection (Ponto/PSD2) — user declined connecting the bank; don't push it.
 
-## Last session (2026-09-29 → 2026-10-01)
+## Last session (2026-10-01, session 2)
 
-Built the whole app, then bank/card reconciliation, rules, approval queue, billing links, drag-and-drop
-everywhere, Sonnet switch (tested on 10 real receipts), entry-number fingerprints (+ converted the 97 live
-lines), and this memory system + repo-based e2e harness.
+Download by month for the accounting tool: month/quarter picker, ZIP with a folder per month (PDFs only,
+pictures converted), card statements optional, summary on top. New `download-dialog.tsx`, `byMonth` option
+in `downloadZip`; e2e steps in `run.js` and `run-bank.js`. Production data untouched (read-only checks:
+43 documents Jul–Sep 2026, all PDFs, 3 card statements).

@@ -9,7 +9,7 @@ Tailwind v4 theme tokens in `src/app/globals.css`. Vercel region `dub1` (`vercel
 
 | Route | File | What |
 | --- | --- | --- |
-| `/` | `src/components/dashboard.tsx` | Documents: upload, scan, drop, list, filters, ZIP, booked status |
+| `/` | `src/components/dashboard.tsx` | Documents: upload, scan, drop, list, filters, download by month or selection, booked status |
 | `/bank` | `src/components/bank-view.tsx` (`source="bank"`) | Bank lines: tabs, import CSV, rules, billing links, approvals |
 | `/card` | same component, `source="card"` | Card lines + Statements tab |
 | `/login` | `src/app/login/*` | Email + password (Supabase). Sign-up is blocked in the DB |
@@ -32,13 +32,14 @@ Server pages (`src/app/*/page.tsx`) load all rows (`fetchAllDocuments`, `fetchAl
 | `bank.ts` | CSV parsing, header guessing (`HEADERS`), ING name extraction (`nameFromDescription`), fingerprints, rules (`ruleFor`), billing links (`linkFor`), matching (`findMatches`), dismissed suggestions (localStorage) |
 | `bank-import.ts` | `importStatement` (dedupe incl. legacy fingerprints), `applyRules`, `approveMatches`, `linkTransaction`, `readCardStatement` |
 | `upload.ts` | `prepareFile` (image → JPEG), `uploadDocument` (SHA-256 dedupe → `DuplicateError`), `requestExtraction` |
-| `files.ts` / `zip.ts` / `xlsx.ts` / `export.ts` | Client-side JPEG/PDF building, ZIP and XLSX writers, downloads |
+| `files.ts` / `zip.ts` / `xlsx.ts` / `export.ts` | Client-side JPEG/PDF building, ZIP and XLSX writers, downloads (`downloadZip`, `byMonth` option) |
 | `use-file-drop.ts` | Page-wide drop hook (Documents, Bank, Card) |
 | `documents.ts`, `format.ts`, `dates.ts`, `categories.ts` | Types/columns, money/date formatting, presets, categories and doc types |
 | `supabase/*` | Browser/server clients and session refresh used by `src/proxy.ts` |
 
 Components worth knowing: `match-offer.ts` (toast offering a receipt's payment with Approve),
-`attach-dialog.tsx`, `billing-dialog.tsx`, `document-panel.tsx`, `toaster.tsx` (popover, top layer).
+`attach-dialog.tsx`, `billing-dialog.tsx`, `document-panel.tsx`, `download-dialog.tsx` (month picker),
+`toaster.tsx` (popover, top layer).
 
 ## Data model (`supabase/migrations/`, types in `src/lib/database.types.ts`)
 
@@ -62,3 +63,8 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
   −7…+60 days; `sure` = exact amount and (name ≥ 0.5 or unique within 7 days). Card statements only match
   bank lines. Nothing is linked without approval.
 - **Totals** skip `doc_type = statement` (their purchases have their own receipts).
+- **Download** (Documents toolbar): with a selection, downloads it as is (one file, or a flat ZIP). Without,
+  opens the month picker (default: last full quarter; choice kept while the page is open) →
+  `downloadZip(…, { byMonth: true })`: `Summary.xlsx` on top, then `2026-07 July/…` folders holding only
+  documents, oldest first; images become one-page PDFs (original kept if the browser can't decode it);
+  statements named `… card statement …`, included unless unticked. Afterwards: "Mark N as booked?".

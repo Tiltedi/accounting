@@ -63,6 +63,24 @@ async function dropFile(page, file, type, target) {
   assert(await page.evaluate(() => window.__overlay), "drop overlay shown while dragging");
 }
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// Sets exactly `wanted` ("YYYY-MM") in the download dialog, whatever it opened with.
+async function pickMonths(dlg, wanted) {
+  const prev = dlg.getByRole("button", { name: "Previous year" });
+  const next = dlg.getByRole("button", { name: "Next year" });
+  while (await prev.isEnabled()) await prev.click();
+  for (;;) {
+    for (const btn of await dlg.getByRole("button", { name: /^\w+ \d{4}, / }).all()) {
+      const [name, year] = (await btn.getAttribute("aria-label")).split(",")[0].split(" ");
+      const month = `${year}-${String(MONTH_NAMES.indexOf(name) + 1).padStart(2, "0")}`;
+      if ((await btn.getAttribute("aria-pressed")) !== String(wanted.includes(month))) await btn.click();
+    }
+    if (!(await next.isEnabled())) return;
+    await next.click();
+  }
+}
+
 async function shot(page, name) {
   await page.waitForTimeout(400);
   await page.screenshot({ path: path.join(SHOTS, `${name}.png`) });
@@ -500,6 +518,29 @@ async function shot(page, name) {
     const body = await page.locator("main").innerText();
     const shown = expected.toLocaleString("en-GB", { minimumFractionDigits: 2, maximumFractionDigits: 2 });
     assert(body.includes(shown), `total ${shown} shown in: ${body.slice(0, 200)}`);
+  });
+
+  await step("download by month: card statement in its month, named as such, can be left out", async () => {
+    const september = (await state()).docs.filter((d) => d.doc_date.startsWith("2026-09"));
+    await page.getByRole("button", { name: "Download", exact: true }).click();
+    const dlg = page.getByRole("dialog", { name: "Download" });
+    await pickMonths(dlg, ["2026-09"]);
+    await dlg.getByText(`${september.length} documents · a folder per month`).waitFor();
+    const toggle = dlg.getByLabel("Card statements");
+    assert(await toggle.isChecked(), "statements included by default");
+    await toggle.uncheck();
+    await dlg.getByText(`${september.length - 1} documents · a folder per month`).waitFor();
+    await toggle.check();
+    await shot(page, "16b-download-september");
+    const [dl] = await Promise.all([page.waitForEvent("download"), dlg.getByRole("button", { name: "Download", exact: true }).click()]);
+    const file = path.join(DL, dl.suggestedFilename());
+    await dl.saveAs(file);
+    const names = execSync(`unzip -Z1 "${file}"`).toString().trim().split("\n");
+    console.log(`      ${dl.suggestedFilename()}:\n` + names.map((n) => "        " + n).join("\n"));
+    assert(dl.suggestedFilename() === "Documents - September 2026.zip", "named after the month");
+    assert(names.includes("2026-09 September/2026-09-01 ING card statement 236.02 EUR.pdf"), "statement named as such");
+    assert(names.length === september.length + 1, "every September document plus the summary");
+    assert(names.slice(1).every((n) => n.startsWith("2026-09 September/") && n.endsWith(".pdf")), "all in the month folder, all PDFs");
   });
 
   await step("phone: card page and 3-tab header fit", async () => {

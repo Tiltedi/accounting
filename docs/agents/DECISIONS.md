@@ -2,6 +2,14 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-01 — Download by month for the accounting tool
+Documents → *Download* with nothing selected opens a month picker (default: last full quarter; Q1–Q4 toggle
+three months). The ZIP has `Summary.xlsx` on top and one folder per month (`2026-07 July/`) holding only
+documents, oldest first, so a month's folder can go into the accounting tool as is. Pictures become
+one-page PDFs (user asked for PDFs; scans already are). Card statements are included, named
+"… card statement …", with a tick box to leave them out. A selection still downloads as is (flat ZIP,
+original files). Revisit once we know what the accounting tool wants (statements or sales apart, names).
+
 ## 2026-10-01 — Agent memory lives in the repo
 `CLAUDE.md` (auto-loaded index) + `docs/agents/*` + `/handoff` skill; e2e harness moved from the session
 scratchpad into `e2e/`. Why: every cloud session starts in a fresh container. Test bank data is an anonymised

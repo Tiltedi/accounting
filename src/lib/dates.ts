@@ -71,6 +71,12 @@ export function presetRange(id: PresetId, today = new Date()): DateRange {
   }
 }
 
+// The months ("YYYY-MM") of the last full quarter: in October 2026, July to September 2026.
+export function lastQuarterMonths(today = new Date()) {
+  const first = Math.floor(today.getMonth() / 3) * 3 - 3;
+  return [0, 1, 2].map((i) => toISODate(new Date(today.getFullYear(), first + i, 1)).slice(0, 7));
+}
+
 export function sameRange(a: DateRange, b: DateRange) {
   return a.from === b.from && a.to === b.to;
 }
@@ -114,6 +120,26 @@ export function rangeLabel(range: DateRange) {
   if (a.y === b.y && a.m === b.m) return `${a.d} – ${b.d} ${MONTHS[a.m - 1]} ${a.y}`;
   if (a.y === b.y) return `${a.d} ${MONTHS[a.m - 1]} – ${b.d} ${MONTHS[b.m - 1]} ${a.y}`;
   return `${dayLabel(range.from)} – ${dayLabel(range.to)}`;
+}
+
+// Label for a set of months ("YYYY-MM"): "September 2026", "Q3 2026", "2026",
+// "Jul – Aug 2026", "Dec 2025 – Jan 2026", "Jul, Sep 2026" or "5 months".
+export function monthsLabel(months: Iterable<string>) {
+  const list = [...new Set(months)].sort();
+  if (!list.length) return "";
+  const a = parts(`${list[0]}-01`);
+  const b = parts(`${list[list.length - 1]}-01`);
+  if (list.length === 1) return `${LONG_MONTHS[a.m - 1]} ${a.y}`;
+
+  const unbroken = (b.y - a.y) * 12 + b.m - a.m + 1 === list.length;
+  if (unbroken && a.y !== b.y) return `${MONTHS[a.m - 1]} ${a.y} – ${MONTHS[b.m - 1]} ${b.y}`;
+  if (unbroken) {
+    if (list.length === 12) return `${a.y}`;
+    if (list.length === 3 && (a.m - 1) % 3 === 0) return `Q${(a.m - 1) / 3 + 1} ${a.y}`;
+    return `${MONTHS[a.m - 1]} – ${MONTHS[b.m - 1]} ${a.y}`;
+  }
+  if (a.y === b.y) return `${list.map((m) => MONTHS[Number(m.slice(5, 7)) - 1]).join(", ")} ${a.y}`;
+  return `${list.length} months`;
 }
 
 function dayLabel(iso: string) {

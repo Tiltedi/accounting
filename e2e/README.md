@@ -11,8 +11,8 @@ can't reach Supabase and have no API key.
 
 | File | What |
 | --- | --- |
-| `run.js` | Documents: login, upload, scan → PDF, reading, editing, filters, ZIP + Summary.xlsx, phone layout, errors |
-| `run-bank.js` | Bank and card: CSV imports and dedupe, rules, approvals, billing links, drag-and-drop, card statements, match offers |
+| `run.js` | Documents: login, upload, scan → PDF, reading, editing, filters, ZIP + Summary.xlsx, download by month (folders, PDFs), phone layout, errors |
+| `run-bank.js` | Bank and card: CSV imports and dedupe, rules, approvals, billing links, drag-and-drop, card statements (also in the month download), match offers |
 | `mock-server.mjs` | Mock backend on :54321. Canned Claude answers keyed by file name (`RESULTS`), statement prompt, CSV-column prompt. Test hooks: `/__state`, `/__mode?anthropic=fail|slow`, `/__expire`, `/__set` |
 | `start.sh` | (Re)starts mock + `next start -p 3100`; build first (see `test.sh`) |
 | `fixtures/` | Synthetic receipts, Dutch ING and headerless ABN CSVs, and `ing-be-sample.csv` — an **anonymised** copy of a real ING Belgium export (same layout and amounts, fake accounts and names). `ing-be-sample-map.json`: its legacy → entry-number fingerprints |

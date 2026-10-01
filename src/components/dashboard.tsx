@@ -7,6 +7,7 @@ import { AccountDialog } from "@/components/account-dialog";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentList } from "@/components/document-list";
 import { DocumentPanel } from "@/components/document-panel";
+import { DownloadDialog } from "@/components/download-dialog";
 import { DropOverlay } from "@/components/drop-overlay";
 import { FileButton } from "@/components/file-button";
 import { AppHeader } from "@/components/app-header";
@@ -79,7 +80,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
   const [openId, setOpenId] = useState<string | null>(null);
   const [uploads, setUploads] = useState(0);
   const [zipping, setZipping] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"dates" | "account" | null>(null);
+  const [dialog, setDialog] = useState<"dates" | "account" | "download" | null>(null);
   const [scanOpen, setScanOpen] = useState(false);
   const [scanPages, setScanPages] = useState<ScanPage[]>([]);
   const [scanBusy, setScanBusy] = useState(false);
@@ -256,19 +257,19 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
 
   // ----- Downloads ---------------------------------------------------------
 
-  async function download(list: Doc[]) {
-    if (!list.length || zipping !== null) return;
+  // A single document downloads as itself; more go in a ZIP. `byMonth`: the
+  // package for the accounting tool, a folder per month (see downloadZip).
+  async function download(list: Doc[], name: string, byMonth = false) {
+    if (!list.length || zipping !== null) return false;
     const bytes = list.reduce((sum, d) => sum + d.size_bytes, 0);
-    if (bytes > 250 * 1024 * 1024 && !window.confirm(`Download ${list.length} documents (${formatBytes(bytes)})?`)) return;
-    setZipping(list.length === 1 ? "" : `0/${list.length}`);
+    if (bytes > 250 * 1024 * 1024 && !window.confirm(`Download ${list.length} documents (${formatBytes(bytes)})?`)) return false;
+    const single = list.length === 1 && !byMonth;
+    setZipping(single ? "" : `0/${list.length}`);
     try {
-      if (list.length === 1) {
+      if (single) {
         await downloadOne(supabase, list[0]);
       } else {
-        const name = selectedDocs.length
-          ? `Documents ${todayISO()}`
-          : ["Documents", rangeLabel(range), category].filter(Boolean).join(" – ");
-        await downloadZip(supabase, list, name, (done, total) => setZipping(`${done}/${total}`));
+        await downloadZip(supabase, list, name, (done, total) => setZipping(`${done}/${total}`), { byMonth });
         const unbooked = list.filter((d) => !d.booked_at);
         if (unbooked.length) {
           toast(`Mark ${unbooked.length} as booked in accounting?`, {
@@ -277,8 +278,10 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
           });
         }
       }
+      return true;
     } catch (err) {
       toast(errorMessage(err), { tone: "error" });
+      return false;
     } finally {
       setZipping(null);
     }
@@ -513,14 +516,15 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
                 </>
               )}
             </div>
+            {/* With a selection: download it. Without: pick months for the accountant. */}
             <button
               type="button"
-              onClick={() => download(scope)}
-              disabled={scope.length === 0 || zipping !== null}
+              onClick={() => (selectedDocs.length ? void download(selectedDocs, `Documents ${todayISO()}`) : setDialog("download"))}
+              disabled={zipping !== null}
               className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-rule-strong bg-card px-4 text-sm font-semibold transition hover:bg-ink/5 disabled:opacity-50"
             >
               {zipping !== null ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
-              {zipping ? <span className="nums">{zipping}</span> : selectedDocs.length ? `Download ${selectedDocs.length}` : "Download all"}
+              {zipping ? <span className="nums">{zipping}</span> : selectedDocs.length ? `Download ${selectedDocs.length}` : "Download"}
             </button>
           </div>
         )}
@@ -611,6 +615,16 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
         }}
       />
       <AccountDialog open={dialog === "account"} email={email} supabase={supabase} docs={docs} onClose={() => setDialog(null)} />
+      <DownloadDialog
+        open={dialog === "download"}
+        docs={docs}
+        reading={uploads + docs.filter((d) => d.status === "processing" || reading.has(d.id)).length}
+        progress={zipping}
+        onClose={() => setDialog(null)}
+        onDownload={async (list, name) => {
+          if (await download(list, name, true)) setDialog((d) => (d === "download" ? null : d));
+        }}
+      />
       <ScanDialog
         open={scanOpen}
         pages={scanPages}

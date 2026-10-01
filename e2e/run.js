@@ -53,6 +53,39 @@ async function waitFor(fn, timeout = 15000, label = "condition") {
   throw new Error(`Timed out waiting for ${label}`);
 }
 
+const MONTH_NAMES = ["January", "February", "March", "April", "May", "June", "July", "August", "September", "October", "November", "December"];
+
+// Sets exactly `wanted` ("YYYY-MM") in the download dialog, whatever it opened with.
+async function pickMonths(dlg, wanted) {
+  const prev = dlg.getByRole("button", { name: "Previous year" });
+  const next = dlg.getByRole("button", { name: "Next year" });
+  while (await prev.isEnabled()) await prev.click();
+  for (;;) {
+    for (const btn of await dlg.getByRole("button", { name: /^\w+ \d{4}, / }).all()) {
+      const [name, year] = (await btn.getAttribute("aria-label")).split(",")[0].split(" ");
+      const month = `${year}-${String(MONTH_NAMES.indexOf(name) + 1).padStart(2, "0")}`;
+      if ((await btn.getAttribute("aria-pressed")) !== String(wanted.includes(month))) await btn.click();
+    }
+    if (!(await next.isEnabled())) return;
+    await next.click();
+  }
+}
+
+// Lists a zip's entries; for PDFs also pages and embedded image sizes.
+function inspectZip(file) {
+  return execSync(`${PY} - <<'EOF'
+import io, zipfile
+from pypdf import PdfReader
+z = zipfile.ZipFile("${file}")
+for n in z.namelist():
+    if n.endswith(".pdf"):
+        r = PdfReader(io.BytesIO(z.read(n)), strict=True)
+        print(n, "| pages", len(r.pages), "| images", [i.image.size for p in r.pages for i in p.images])
+    else:
+        print(n)
+EOF`).toString();
+}
+
 function watch(page, tag) {
   page.on("console", (msg) => {
     if (msg.type() === "error") consoleErrors.push(`[${tag}] ${msg.text()}`);
@@ -294,11 +327,73 @@ EOF`).toString();
     await page.getByRole("button", { name: "Clear" }).click();
   });
 
-  await step("download all (filtered) names the zip after the range", async () => {
+  await step("filtered list: select all → downloads just those", async () => {
     await page.getByLabel("Category").selectOption("Travel");
-    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: /^Download/ }).first().click()]);
+    await page.getByText("1 document", { exact: true }).waitFor();
+    await page.getByLabel("Select all").check();
+    const [dl] = await Promise.all([page.waitForEvent("download"), page.getByRole("button", { name: "Download 1" }).click()]);
     console.log("      single-by-filter:", dl.suggestedFilename());
+    assert(dl.suggestedFilename() === "2026-07-21 Trenitalia SpA 1234.50 EUR.png", "the one Travel document, as stored");
+    await page.getByRole("button", { name: "Clear" }).click();
     await page.getByLabel("Category").selectOption("");
+    await page.getByText("3 documents").waitFor();
+  });
+
+  await step("download by month: Q3 → a folder per month, all PDFs", async () => {
+    await page.getByRole("button", { name: "Download", exact: true }).click();
+    const dlg = page.getByRole("dialog", { name: "Download" });
+    await dlg.waitFor();
+    // Opens on the last full quarter.
+    const now = new Date();
+    const q = Math.floor(now.getMonth() / 3);
+    const lastQuarter = q === 0 ? `Q4 ${now.getFullYear() - 1}` : `Q${q} ${now.getFullYear()}`;
+    await dlg.getByRole("button", { name: lastQuarter, exact: true, pressed: true }).waitFor();
+
+    await pickMonths(dlg, ["2026-07", "2026-08", "2026-09"]);
+    await dlg.getByRole("button", { name: "Q3 2026", exact: true, pressed: true }).waitFor();
+    await dlg.getByText("3 documents · a folder per month").waitFor();
+    await shot(page, "07b-download-months");
+    // A quarter toggles as a whole.
+    await dlg.getByRole("button", { name: "Q3 2026", exact: true }).click();
+    await dlg.getByText("Pick months").waitFor();
+    assert(await dlg.getByRole("button", { name: "Download", exact: true }).isDisabled(), "nothing to download");
+    await dlg.getByRole("button", { name: "Q3 2026", exact: true }).click();
+    await dlg.getByRole("button", { name: "July 2026, 1 document", pressed: true }).waitFor();
+
+    const [dl] = await Promise.all([page.waitForEvent("download"), dlg.getByRole("button", { name: "Download", exact: true }).click()]);
+    const file = path.join(DL, dl.suggestedFilename());
+    await dl.saveAs(file);
+    console.log("      zip:", dl.suggestedFilename());
+    assert(dl.suggestedFilename() === "Documents - Q3 2026.zip", "named after the quarter");
+    await dlg.waitFor({ state: "hidden" });
+    const out = inspectZip(file);
+    console.log(out.trim().split("\n").map((l) => "      " + l).join("\n"));
+    const lines = out.trim().split("\n");
+    assert(lines[0] === "Summary.xlsx", "summary on top, outside the month folders");
+    assert(lines[1].startsWith("2026-07 July/2026-07-21 Trenitalia SpA 1234.50 EUR.pdf | pages 1 | images [(1200, 1600)]"), "PNG ticket became a one-page PDF");
+    assert(lines[2].startsWith("2026-08 August/2026-08-03 Bar Centrale 49.90 EUR.pdf | pages 1 | images [(1800, 2400)]"), "photo became a one-page PDF");
+    assert(lines[3].startsWith("2026-09 September/2026-09-12 ACME Cloud 1234.56 EUR.pdf"), "PDF in its month");
+    assert(lines.length === 4, "nothing else");
+    const zip = execSync(`unzip -p "${file}" "2026-09 September/2026-09-12 ACME Cloud 1234.56 EUR.pdf"`);
+    assert(zip.equals(fs.readFileSync(path.join(FIX, "invoice.pdf"))), "stored PDFs are passed on untouched");
+    const sheet = execSync(`${PY} - <<'EOF'
+import openpyxl, io, zipfile
+ws = openpyxl.load_workbook(io.BytesIO(zipfile.ZipFile("${file}").read("Summary.xlsx"))).active
+for r in list(ws.iter_rows(values_only=True))[1:]: print(r[1], "|", r[-1])
+EOF`).toString();
+    console.log(sheet.trim().split("\n").map((l) => "      " + l).join("\n"));
+    assert(/^Trenitalia SpA \| 2026-07 July\//.test(sheet.trim()), "summary lists oldest first with folder paths");
+
+    // Then offered to mark them booked; booked months show a tick.
+    await page.getByText("Mark 3 as booked in accounting?").waitFor();
+    await page.getByRole("button", { name: "Mark booked" }).first().click();
+    await waitFor(async () => (await state()).docs.every((d) => d.booked_at), 5000, "all booked");
+    await page.getByRole("button", { name: "Download", exact: true }).click();
+    await dlg.getByRole("button", { name: /^Q1 \d{4}$/ }).waitFor();
+    while (!(await dlg.getByRole("button", { name: "Q3 2026", exact: true }).count())) await dlg.getByRole("button", { name: "Previous year" }).click();
+    await dlg.getByRole("button", { name: "August 2026, 1 document, booked" }).waitFor();
+    await page.keyboard.press("Escape");
+    await dlg.waitFor({ state: "hidden" });
   });
 
   await step("delete a document", async () => {
@@ -447,6 +542,20 @@ EOF`).toString();
     await shot(m, "16-dates-phone");
     await m.getByRole("button", { name: "This year" }).click();
     await m.getByRole("button", { name: /^2026$/ }).waitFor();
+  });
+
+  await step("phone: download sheet fits", async () => {
+    await m.getByRole("button", { name: "Download", exact: true }).click();
+    const dlg = m.getByRole("dialog", { name: "Download" });
+    await dlg.getByRole("button", { name: "Previous year" }).waitFor();
+    await m.waitForTimeout(300);
+    await shot(m, "16b-download-phone");
+    const box = await dlg.getByRole("button", { name: "Download", exact: true }).boundingBox();
+    assert(box && box.x + box.width <= 390 && box.y + box.height <= 844, `download button on screen ${JSON.stringify(box)}`);
+    const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
+    assert(overflow <= 0, `overflow ${overflow}px`);
+    await dlg.getByLabel("Close").click();
+    await dlg.waitFor({ state: "hidden" });
   });
 
   await step("phone: no horizontal overflow", async () => {

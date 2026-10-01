@@ -40,6 +40,16 @@ export function formatMonth(isoMonth: string) {
   return `${LONG_MONTHS[m - 1]} ${y}`;
 }
 
+// "2026-09" → "September"
+export function monthName(isoMonth: string) {
+  return LONG_MONTHS[Number(isoMonth.slice(5, 7)) - 1];
+}
+
+// "2026-09" → "Sep"
+export function formatShortMonth(isoMonth: string) {
+  return MONTHS[Number(isoMonth.slice(5, 7)) - 1];
+}
+
 // Sums amounts per currency, largest first.
 // Card statements are left out: their purchases have receipts of their own.
 export function totalsByCurrency(docs: { total: number | null; currency: string | null; doc_type?: string | null }[]) {
