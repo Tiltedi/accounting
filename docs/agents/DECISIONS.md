@@ -2,6 +2,10 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-01 — Sand accent instead of green
+User found the dark-mode green too intense; picked sand from three previews (soft blue, sand, lavender).
+Dark accent #cfae84 on #20170c ink; light accent #8a6a40. App icons (svg + PNGs) recoloured to match.
+
 ## 2026-10-01 — Documents list: newest uploads first
 User wants to find what they just added without searching. Default order is *Recently added* (by
 `created_at`, groups "Added today/yesterday/<day>"); *By document date* (per month) is one select away and

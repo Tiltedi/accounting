@@ -12,7 +12,7 @@
 ## Preferences
 
 - Goal: spend the least possible time on admin. Value = fewer clicks, fewer manual checks.
-- Design: straightforward, minimal words, fast, intuitive; works on phone and laptop. Dark mode by default.
+- Design: straightforward, minimal words, fast, intuitive; works on phone and laptop. Dark mode by default; sand accent (asked for something calmer than green).
 - **Will not connect the bank** to the app. Might consider connecting the accounting tool; unsure.
 - Wants approval before anything is linked (matches go to a queue, never silently).
 - Wants to be asked before production changes; typically answers "push to main" when ready.
