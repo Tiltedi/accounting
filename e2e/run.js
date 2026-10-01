@@ -441,6 +441,22 @@ EOF`).toString();
     await panel.getByLabel("Close").click();
   });
 
+  await step("dark by default; Light chosen in the account menu is remembered", async () => {
+    const bg = () => page.evaluate(() => getComputedStyle(document.body).backgroundColor);
+    assert((await bg()) === "rgb(18, 18, 16)", `default background ${await bg()}`);
+    await page.getByRole("button", { name: "Account" }).click();
+    const dlg = page.getByRole("dialog", { name: "Account" });
+    assert((await dlg.getByRole("radio", { name: "Dark" }).getAttribute("aria-checked")) === "true", "Dark selected");
+    await dlg.getByRole("radio", { name: "Light" }).click();
+    assert((await bg()) === "rgb(246, 245, 240)", `light background ${await bg()}`);
+    await page.reload();
+    assert((await bg()) === "rgb(246, 245, 240)", "light kept after reload, before any script runs late");
+    await page.getByRole("button", { name: "Account" }).click();
+    await page.getByRole("dialog", { name: "Account" }).getByRole("radio", { name: "Dark" }).click();
+    assert((await bg()) === "rgb(18, 18, 16)", "back to dark");
+    await page.keyboard.press("Escape");
+  });
+
   await step("account: change password, sign out, sign back in", async () => {
     await page.getByRole("button", { name: "Account" }).click();
     const dlg = page.getByRole("dialog", { name: "Account" });

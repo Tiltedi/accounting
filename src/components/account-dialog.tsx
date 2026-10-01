@@ -69,6 +69,8 @@ export function AccountDialog({
 
         <ReadingCost docs={docs} />
 
+        <Appearance />
+
         {inbox !== undefined && (
           <div>
             <div className="text-xs font-medium tracking-wide text-muted">Email inbox</div>
@@ -126,6 +128,57 @@ export function AccountDialog({
         </button>
       </div>
     </Dialog>
+  );
+}
+
+type Theme = "dark" | "light" | "system";
+
+function applyTheme(theme: Theme) {
+  const root = document.documentElement;
+  if (theme === "dark") root.removeAttribute("data-theme");
+  else root.setAttribute("data-theme", theme);
+  try {
+    localStorage.setItem("theme", theme);
+  } catch {
+    // Not remembered after a reload; fine.
+  }
+}
+
+// Dark unless chosen otherwise; remembered on this device (applied early by the layout).
+function Appearance() {
+  const [theme, setTheme] = useState<Theme>(() => {
+    if (typeof document === "undefined") return "dark";
+    const t = document.documentElement.dataset.theme;
+    return t === "light" || t === "system" ? t : "dark";
+  });
+  function choose(next: Theme) {
+    setTheme(next);
+    applyTheme(next);
+  }
+  return (
+    <div>
+      <div className="text-xs font-medium tracking-wide text-muted">Appearance</div>
+      <div className="mt-1.5 grid grid-cols-3 gap-1 rounded-full bg-ink/5 p-1" role="radiogroup" aria-label="Appearance">
+        {(
+          [
+            ["dark", "Dark"],
+            ["light", "Light"],
+            ["system", "Device"],
+          ] as const
+        ).map(([value, label]) => (
+          <button
+            key={value}
+            type="button"
+            role="radio"
+            aria-checked={theme === value}
+            onClick={() => choose(value)}
+            className={`h-9 rounded-full text-sm font-semibold transition ${theme === value ? "bg-card shadow-sm" : "text-muted hover:text-ink"}`}
+          >
+            {label}
+          </button>
+        ))}
+      </div>
+    </div>
   );
 }
 

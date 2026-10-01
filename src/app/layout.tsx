@@ -31,15 +31,18 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: [
-    { media: "(prefers-color-scheme: light)", color: "#f6f5f0" },
-    { media: "(prefers-color-scheme: dark)", color: "#121210" },
-  ],
+  themeColor: "#121210",
 };
+
+// Applies the saved appearance (see account dialog) before the first paint; dark when unset.
+const THEME_SCRIPT = `try{var t=localStorage.getItem("theme");if(t==="light"||t==="system")document.documentElement.dataset.theme=t}catch(e){}`;
 
 export default function RootLayout({ children }: LayoutProps<"/">) {
   return (
-    <html lang="en" className={`${sans.variable} ${mono.variable}`}>
+    <html lang="en" className={`${sans.variable} ${mono.variable}`} suppressHydrationWarning>
+      <head>
+        <script dangerouslySetInnerHTML={{ __html: THEME_SCRIPT }} />
+      </head>
       <body className="min-h-dvh bg-paper font-sans text-ink antialiased">
         {children}
         <Toaster />

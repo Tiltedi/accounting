@@ -35,8 +35,26 @@
   }
 }
 
+/* Dark by default. <html data-theme="light"> is light; data-theme="system" follows the device. */
+:root:not([data-theme="light"]):not([data-theme="system"]) {
+  --color-paper: #121210;
+  --color-card: #1a1a17;
+  --color-ink: #edece6;
+  --color-ink-2: #cfcec6;
+  --color-muted: #9a998f;
+  --color-rule: #2b2a26;
+  --color-rule-strong: #3b3a34;
+  --color-accent: #3dbb8a;
+  --color-accent-hover: #52c898;
+  --color-accent-ink: #0b1f17;
+  --color-accent-soft: #15302a;
+  --color-danger: #f97066;
+  --color-danger-soft: #3a1714;
+  --color-warn: #e3b341;
+}
+
 @media (prefers-color-scheme: dark) {
-  :root {
+  :root[data-theme="system"] {
     --color-paper: #121210;
     --color-card: #1a1a17;
     --color-ink: #edece6;
@@ -55,8 +73,16 @@
 }
 
 :root {
-  color-scheme: light dark;
+  color-scheme: dark;
   -webkit-tap-highlight-color: transparent;
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+}
+
+:root[data-theme="system"] {
+  color-scheme: light dark;
 }
 
 html:has(dialog[open]) {

@@ -3,7 +3,8 @@
 Next.js 16 App Router (read `node_modules/next/dist/docs/` before using unfamiliar APIs — this version
 differs from older training data: `proxy.ts` instead of middleware, async `cookies()`/`searchParams`,
 `error.tsx` gets `retry`). Supabase (auth, Postgres with RLS, storage). Claude via `@anthropic-ai/sdk`.
-Tailwind v4 theme tokens in `src/app/globals.css`. Vercel region `dub1` (`vercel.json`).
+Tailwind v4 theme tokens in `src/app/globals.css` (dark by default; `<html data-theme="light|system">`
+set before paint by a script in `layout.tsx` from localStorage `theme`; chosen under Account → Appearance). Vercel region `dub1` (`vercel.json`).
 
 ## Pages
 
