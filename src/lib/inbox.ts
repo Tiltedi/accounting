@@ -9,6 +9,9 @@ export type InboxAttachment = {
   suggested: boolean; // ticked by default: PDFs and real (not inline) pictures
 };
 
+// Pseudo attachment: the email itself, saved as a PDF (e.g. a tax payment request).
+export const EMAIL_PART = "email";
+
 export type InboxItem = {
   id: string;
   mailbox: string;

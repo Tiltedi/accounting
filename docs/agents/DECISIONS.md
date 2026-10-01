@@ -8,7 +8,8 @@ out of the repo). The app reads that mailbox with the Gmail API (internal Google
 and lists new emails; nothing is imported or read by Claude until the user taps Import (user wants control
 and cost stays at zero for skipped mail). Checked on open/return instead of a cron, since approval needs the
 user anyway and a cron would need a service-role key. Rejected: paid inbound-mail service (Postmark).
-Revisit: auto-import from trusted senders, emails whose invoice is only a link (save the email as PDF).
+Emails that are themselves the document (VAT payment requests) can be imported as a PDF of the email
+(opt-in per email). Revisit: auto-import from trusted senders; invoices behind a link.
 
 ## 2026-10-01 — Download by month for the accounting tool
 Documents → *Download* with nothing selected opens a month picker (default: last full quarter; Q1–Q4 toggle

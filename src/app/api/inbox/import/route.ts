@@ -2,6 +2,7 @@ import { createHash, randomUUID } from "node:crypto";
 import { BUCKET, DOC_COLUMNS, type Doc } from "@/lib/documents";
 import { extensionFor } from "@/lib/files";
 import { accessToken, getAttachment, GmailError } from "@/lib/gmail";
+import { EMAIL_PART } from "@/lib/inbox";
 import { failure, mailConnection, signedInClient } from "@/lib/inbox-server";
 import { MAX_UPLOAD_BYTES } from "@/lib/upload";
 
@@ -26,7 +27,7 @@ export async function POST(request: Request) {
     if (error) throw error;
     if (!item) return Response.json({ error: "Email not found" }, { status: 404 });
     if (item.status !== "pending") return Response.json({ error: "This email was already handled" }, { status: 409 });
-    const listed = new Set((item.attachments as { part: string }[]).map((a) => a.part));
+    const listed = new Set([EMAIL_PART, ...(item.attachments as { part: string }[]).map((a) => a.part)]);
     if (parts.some((p) => !listed.has(p))) return Response.json({ error: "Unknown attachment" }, { status: 400 });
 
     const connection = await mailConnection(supabase);

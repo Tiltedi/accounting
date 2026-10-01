@@ -4,7 +4,7 @@ import { useState } from "react";
 import { ExternalLink, FileText, Image as ImageIcon, Inbox, LoaderCircle, Mail, RotateCw } from "lucide-react";
 import { Dialog, DialogHeader } from "@/components/dialog";
 import { formatBytes, formatDay } from "@/lib/format";
-import { gmailLink, senderName, type InboxItem, type InboxState } from "@/lib/inbox";
+import { EMAIL_PART, gmailLink, senderName, type InboxAttachment, type InboxItem, type InboxState } from "@/lib/inbox";
 
 // Emails that reached the accounting inbox: nothing is imported (or read by
 // Claude) until the user picks the attachments and taps Import.
@@ -123,47 +123,52 @@ function Email({
       </div>
       <p className="mt-0.5 truncate text-sm">{item.subject || "(no subject)"}</p>
 
-      {item.attachments.length ? (
-        <ul className="mt-3 space-y-1">
-          {item.attachments.map((a) => {
-            const Icon = a.mime === "application/pdf" ? FileText : ImageIcon;
-            return (
-              <li key={a.part} className="flex items-center gap-2.5 text-sm">
-                <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
-                  <input
-                    type="checkbox"
-                    checked={parts.includes(a.part)}
-                    onChange={() => onToggle(a.part)}
-                    disabled={busy}
-                    className="size-[1.1rem] shrink-0 cursor-pointer accent-(--color-accent)"
-                  />
-                  <Icon className="size-4 shrink-0 text-muted" aria-hidden="true" />
-                  <span className="truncate">{a.filename}</span>
-                  <span className="nums shrink-0 text-xs text-muted">{formatBytes(a.size)}</span>
-                </label>
-                <a
-                  href={`/api/inbox/file?id=${item.id}&part=${encodeURIComponent(a.part)}`}
-                  target="_blank"
-                  rel="noreferrer"
-                  className="shrink-0 font-medium text-accent hover:underline"
-                >
-                  View
-                </a>
-              </li>
-            );
-          })}
-        </ul>
-      ) : (
-        <p className="mt-3 flex items-center gap-2 text-sm text-muted">
-          <Mail className="size-4 shrink-0" /> No PDF or photo attached.
-          <a href={gmailLink(item)} target="_blank" rel="noreferrer" className="inline-flex items-center gap-1 font-medium text-accent hover:underline">
-            Open in Gmail <ExternalLink className="size-3.5" />
-          </a>
-        </p>
-      )}
+      {item.snippet && <p className="mt-1 line-clamp-2 text-xs text-muted">{item.snippet}</p>}
+
+      <ul className="mt-3 space-y-1">
+        {[...item.attachments, EMAIL_ITSELF].map((a) => {
+          const Icon = a.part === EMAIL_PART ? Mail : a.mime === "application/pdf" ? FileText : ImageIcon;
+          return (
+            <li key={a.part} className="flex items-center gap-2.5 text-sm">
+              <label className="flex min-w-0 flex-1 cursor-pointer items-center gap-2.5">
+                <input
+                  type="checkbox"
+                  checked={parts.includes(a.part)}
+                  onChange={() => onToggle(a.part)}
+                  disabled={busy}
+                  className="size-[1.1rem] shrink-0 cursor-pointer accent-(--color-accent)"
+                />
+                <Icon className="size-4 shrink-0 text-muted" aria-hidden="true" />
+                <span className={`truncate ${a.part === EMAIL_PART ? "text-ink-2" : ""}`}>{a.filename}</span>
+                {a.size > 0 && <span className="nums shrink-0 text-xs text-muted">{formatBytes(a.size)}</span>}
+              </label>
+              <a
+                href={`/api/inbox/file?id=${item.id}&part=${encodeURIComponent(a.part)}`}
+                target="_blank"
+                rel="noreferrer"
+                aria-label={`View ${a.filename}`}
+                className="shrink-0 font-medium text-accent hover:underline"
+              >
+                View
+              </a>
+            </li>
+          );
+        })}
+      </ul>
 
       <div className="mt-3 flex items-center justify-end gap-2">
-        {busy && <LoaderCircle className="mr-auto size-4 animate-spin text-accent" />}
+        {busy ? (
+          <LoaderCircle className="mr-auto size-4 animate-spin text-accent" />
+        ) : (
+          <a
+            href={gmailLink(item)}
+            target="_blank"
+            rel="noreferrer"
+            className="mr-auto inline-flex items-center gap-1 text-sm font-medium text-muted hover:text-ink"
+          >
+            Gmail <ExternalLink className="size-3.5" />
+          </a>
+        )}
         <button
           type="button"
           onClick={onSkip}
@@ -172,20 +177,21 @@ function Email({
         >
           Skip
         </button>
-        {item.attachments.length > 0 && (
-          <button
-            type="button"
-            onClick={onImport}
-            disabled={busy || parts.length === 0}
-            className="h-9 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover disabled:opacity-40"
-          >
-            Import{parts.length > 1 ? ` ${parts.length}` : ""}
-          </button>
-        )}
+        <button
+          type="button"
+          onClick={onImport}
+          disabled={busy || parts.length === 0}
+          className="h-9 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover disabled:opacity-40"
+        >
+          Import{parts.length > 1 ? ` ${parts.length}` : ""}
+        </button>
       </div>
     </li>
   );
 }
+
+// Never ticked by default: most emails without attachments aren't documents.
+const EMAIL_ITSELF: InboxAttachment = { part: EMAIL_PART, filename: "The email itself (as PDF)", mime: "application/pdf", size: 0, suggested: false };
 
 function NotConnected() {
   return (

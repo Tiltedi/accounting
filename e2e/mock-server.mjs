@@ -198,15 +198,15 @@ const b64 = (buf) => Buffer.from(buf).toString("base64url");
 const mailbox = [];
 let googleRefresh = null;
 let gmailCalls = 0;
-function addMail({ id, from, subject, snippet, files = [], at = Date.now() }) {
-  const parts = [{ partId: "0", mimeType: "text/plain", filename: "", headers: [], body: { size: 20, data: b64("Forwarded invoice") } }];
+function addMail({ id, from, subject, snippet, files = [], text = "Forwarded invoice", at = Date.now() }) {
+  const parts = [{ partId: "0", mimeType: "text/plain", filename: "", headers: [], body: { size: text.length, data: b64(text) } }];
   files.forEach((f, i) => {
     const bytes = fs.readFileSync(new URL(`./fixtures/${f.fixture}`, import.meta.url));
     const headers = [{ name: "Content-Disposition", value: `${f.inline ? "inline" : "attachment"}; filename="${f.name}"` }];
     if (f.inline) headers.push({ name: "Content-ID", value: `<sig${i}>` });
     parts.push({ partId: String(i + 1), mimeType: f.mime, filename: f.name, headers, body: { attachmentId: `att-${id}-${i}-${crypto.randomUUID()}`, size: bytes.length }, bytes });
   });
-  mailbox.push({ id, internalDate: String(at), snippet, payload: { mimeType: "multipart/mixed", headers: [{ name: "From", value: from }, { name: "Subject", value: subject }], parts } });
+  mailbox.push({ id, internalDate: String(at), snippet, payload: { mimeType: "multipart/mixed", headers: [{ name: "From", value: from }, { name: "To", value: "admin@tiltedi.com" }, { name: "Date", value: new Date(at).toUTCString() }, { name: "Subject", value: subject }], parts } });
 }
 addMail({ id: "m1", from: "Luca Pilurzu <luca@tiltedi.com>", subject: "Fwd: Your invoice from ACME Cloud", snippet: "Forwarded message &amp; invoice", files: [{ name: "invoice.pdf", mime: "application/octet-stream", fixture: "invoice.pdf" }], at: Date.now() - 3600_000 });
 addMail({ id: "m2", from: "Shell <noreply@shell.example>", subject: "Your fuel receipt", snippet: "Thanks for stopping by", files: [{ name: "shell.jpg", mime: "image/jpeg", fixture: "shell.jpg" }, { name: "logo.png", mime: "image/png", fixture: "ticket.png", inline: true }], at: Date.now() - 7200_000 });
@@ -614,6 +614,7 @@ async function anthropic(req, res) {
     "vlabel.jpg": { vendor: "Vlabel", description: "Registration tax", doc_date: "2026-09-28", doc_type: "invoice", category: "Taxes & fees", invoice_number: "VL-1", total: 168.66, tax: null, currency: "EUR" },
     "card-statement": { vendor: "ING", description: "Mastercard statement", doc_date: "2026-09-01", doc_type: "other", category: "Other", invoice_number: null, total: 236.02, tax: null, currency: "EUR", card_statement: true },
     "shell.jpg": { vendor: "Shell", description: "Fuel", doc_date: "2026-08-12", doc_type: "receipt", category: "Vehicle", invoice_number: null, total: 65, tax: 11.28, currency: "EUR" },
+    "BTW Aangifte": { vendor: "FOD Financiën – btw-ontvangsten", description: "Btw-aangifte 2de kwartaal 2026", doc_date: "2026-07-21", doc_type: "other", category: "Taxes & fees", invoice_number: "+++078/7646/33429+++", total: 2145.43, tax: null, currency: "EUR" },
     Scan: { vendor: "Google Cloud", description: "Workspace subscription", doc_date: "2026-09-20", doc_type: "invoice", category: "Software", invoice_number: "GC-9921", total: 12.34, tax: null, currency: "USD" },
   };
   const key = Object.keys(RESULTS).find((k) => fileName.includes(k));

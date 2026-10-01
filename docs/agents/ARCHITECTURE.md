@@ -75,7 +75,9 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
 - **Totals** skip `doc_type = statement` (their purchases have their own receipts).
 - **Inbox**: checked when Documents opens and when the app comes back into view (no cron: importing needs
   the user anyway). Suggested ticks: PDFs, and pictures that aren't inline (signatures) and > 20 KB.
-  Attachments are found by part id at import (Gmail attachment ids change between reads).
+  Attachments are found by part id at import (Gmail attachment ids change between reads). Every email also
+  offers part `email` = the email itself as a PDF (`text-pdf.ts`, Courier/WinAnsi, headers + text body),
+  never ticked by default — for documents that are only an email (e.g. the accountant's VAT payment request).
 - **Download** (Documents toolbar): with a selection, downloads it as is (one file, or a flat ZIP). Without,
   opens the month picker (default: last full quarter; choice kept while the page is open) →
   `downloadZip(…, { byMonth: true })`: `Summary.xlsx` on top, then `2026-07 July/…` folders holding only

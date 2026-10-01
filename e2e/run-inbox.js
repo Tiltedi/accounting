@@ -87,14 +87,15 @@ async function shot(page, name) {
     const fuel = email("Your fuel receipt");
     assert(await fuel.getByRole("checkbox", { name: /shell\.jpg/ }).isChecked(), "photo attachment ticked");
     assert(!(await fuel.getByRole("checkbox", { name: /logo\.png/ }).isChecked()), "inline signature picture not ticked");
-    await email("Security alert").getByText("No PDF or photo attached.").waitFor();
-    assert(!(await email("Security alert").getByRole("button", { name: "Import" }).count()), "nothing to import there");
+    const alert = email("Security alert");
+    assert(!(await alert.getByRole("checkbox", { name: /The email itself/ }).isChecked()), "the email itself is never ticked by default");
+    assert(await alert.getByRole("button", { name: "Import" }).isDisabled(), "nothing ticked, nothing to import");
     assert(/Forwarded message & invoice/.test((await state()).inboxItems.find((i) => i.gmail_id === "m1").snippet), "snippet entities decoded");
     await shot(page, "01-inbox");
   });
 
   await step("view an attachment before importing", async () => {
-    const href = await email("Fwd: Your invoice from ACME Cloud").getByRole("link", { name: "View" }).getAttribute("href");
+    const href = await email("Fwd: Your invoice from ACME Cloud").getByRole("link", { name: "View invoice.pdf" }).getAttribute("href");
     const response = await page.request.get(APP + href);
     assert(response.status() === 200 && response.headers()["content-type"] === "application/pdf", `view ${response.status()}`);
     assert(Buffer.from(await response.body()).equals(fs.readFileSync(path.join(FIX, "invoice.pdf"))), "same bytes as the email's PDF");
@@ -149,6 +150,30 @@ async function shot(page, name) {
     const s = await state();
     assert(s.docs.length === 3, `3 documents, got ${s.docs.length}`);
     assert(s.inboxItems.find((i) => i.gmail_id === "m5").document_ids[0] === s.docs.find((d) => d.vendor === "ACME Cloud").id, "duplicate points to the existing document");
+    await inbox.getByLabel("Close").click();
+  });
+
+  await step("an email without attachments can be kept as a PDF of the email", async () => {
+    const text = "---------- Forwarded message ---------\nFrom: VT Accountants <fidu@vt-accountants.be>\nSubject: BTW Aangifte - Tilted i - 2de kwartaal 2026\n\nUit de aangifte blijkt dat u de volgende som aan de Staat verschuldigd bent: 2.145,43 €.\nTe betalen voor: 25 juli 2026\nIBAN: BE41 6792 0036 4210\nMededeling: +++078/7646/33429+++\nKlik hier <https://vtaccountants.winauditor.net/nl/Print/76668/DeclarationTVA#/2026-04/2026-06/> om uw betaling voor te bereiden.";
+    await fetch(`${MOCK}/__mail`, { method: "POST", body: JSON.stringify({ id: "m7", from: "Luca Pilurzu <luca@tiltedi.com>", subject: "Fwd: BTW Aangifte - Tilted i - 2de kwartaal 2026", snippet: "VAT due", text, files: [{ name: "noname", mime: "image/png", fixture: "ticket.png", inline: true }] }) });
+    await page.reload();
+    await page.getByRole("button", { name: /1 email to review/ }).click();
+    const tax = email("Fwd: BTW Aangifte - Tilted i - 2de kwartaal 2026");
+    await tax.waitFor();
+    const href = await tax.getByRole("link", { name: "View The email itself (as PDF)" }).getAttribute("href");
+    const pdf = Buffer.from(await (await page.request.get(APP + href)).body());
+    fs.writeFileSync(path.join(SHOTS, "email.pdf"), pdf);
+    const { execSync } = require("child_process");
+    const out = execSync(`${process.env.E2E_PYTHON || "python3"} -c "from pypdf import PdfReader; r=PdfReader('${path.join(SHOTS, "email.pdf")}', strict=True); print(len(r.pages)); print(r.pages[0].extract_text())"`).toString();
+    console.log(out.split("\n").slice(0, 12).map((l) => "      " + l).join("\n"));
+    assert(/2\.145,43\s€/.test(out) && /Subject: Fwd: BTW Aangifte/.test(out) && /\+\+\+078\/7646\/33429\+\+\+/.test(out), "email text in the PDF, € kept");
+    await tax.getByRole("checkbox", { name: /The email itself/ }).check();
+    await tax.getByRole("button", { name: "Import" }).click();
+    await tax.waitFor({ state: "detached" });
+    await waitFor(async () => (await state()).docs.some((d) => d.total === 2145.43 && d.status === "ready"), 15000, "tax email read");
+    const doc = (await state()).docs.find((d) => d.total === 2145.43);
+    assert(doc.file_name === "BTW Aangifte - Tilted i - 2de kwartaal 2026 (email).pdf" && doc.mime_type === "application/pdf", `stored as ${doc.file_name}`);
+    assert(!(await state()).docs.some((d) => d.file_name === "noname"), "layout picture left out");
     await inbox.getByLabel("Close").click();
   });
 

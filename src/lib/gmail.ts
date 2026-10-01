@@ -2,7 +2,9 @@
 // scope). The refresh token is stored encrypted with a key derived from the
 // OAuth client secret, so the database alone can't be used to read mail.
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
-import type { InboxAttachment } from "@/lib/inbox";
+import { sanitizeFileName } from "@/lib/files";
+import { EMAIL_PART, type InboxAttachment } from "@/lib/inbox";
+import { textToPdf } from "@/lib/text-pdf";
 
 const AUTH_URL = process.env.GOOGLE_AUTH_URL || "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = process.env.GOOGLE_TOKEN_URL || "https://oauth2.googleapis.com/token";
@@ -118,7 +120,7 @@ type Part = {
   mimeType?: string;
   filename?: string;
   headers?: { name: string; value: string }[];
-  body?: { attachmentId?: string; size?: number };
+  body?: { attachmentId?: string; size?: number; data?: string };
   parts?: Part[];
 };
 
@@ -180,9 +182,46 @@ export async function getMessage(accessToken: string, id: string): Promise<MailM
   };
 }
 
-// An attachment's bytes, found by part id (Gmail's attachment ids change between reads).
+// The email's text: the plain-text part, else the HTML part without tags.
+function bodyText(part: Part): string | null {
+  const parts: Part[] = [];
+  const collect = (p: Part) => {
+    if (!p.filename && p.body?.data) parts.push(p);
+    for (const child of p.parts ?? []) collect(child);
+  };
+  collect(part);
+  const plain = parts.find((p) => p.mimeType === "text/plain");
+  if (plain) return Buffer.from(plain.body!.data!, "base64url").toString("utf8");
+  const html = parts.find((p) => p.mimeType === "text/html");
+  if (!html) return null;
+  return decodeEntities(
+    Buffer.from(html.body!.data!, "base64url")
+      .toString("utf8")
+      .replace(/<(style|script)[\s\S]*?<\/\1>/gi, "")
+      .replace(/<br\s*\/?>|<\/(p|div|tr|li|h\d)>/gi, "\n")
+      .replace(/<[^>]+>/g, "")
+      .replace(/&nbsp;/g, " ")
+      .replace(/\n{3,}/g, "\n\n"),
+  );
+}
+
+// The email itself as a PDF (headers + text), for emails where the email is the document.
+function emailPdf(message: Message) {
+  const head = ["From", "To", "Date", "Subject"]
+    .map((name) => [name, header(message.payload, name.toLowerCase())])
+    .filter(([, value]) => value)
+    .map(([name, value]) => `${name}: ${value}`)
+    .join("\n");
+  const bytes = textToPdf(`${head}\n\n${bodyText(message.payload)?.trim() ?? "(no text)"}\n`);
+  const subject = header(message.payload, "subject")?.replace(/^(fwd?|tr|wg|re):\s*/i, "") || "Email";
+  return { bytes, filename: `${sanitizeFileName(subject)} (email).pdf`, mime: "application/pdf" };
+}
+
+// An attachment's bytes, found by part id (Gmail's attachment ids change between reads),
+// or the email itself as a PDF for EMAIL_PART.
 export async function getAttachment(accessToken: string, messageId: string, partId: string) {
   const message = await api<Message>(accessToken, `/users/me/messages/${messageId}?format=full`);
+  if (partId === EMAIL_PART) return emailPdf(message);
   const part = walk(message.payload).find((p) => p.partId === partId);
   if (!part) throw new GmailError("That attachment is no longer in the email.");
   const body = await api<{ data: string }>(accessToken, `/users/me/messages/${messageId}/attachments/${part.body!.attachmentId}`);

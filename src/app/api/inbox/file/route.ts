@@ -1,4 +1,5 @@
 import { accessToken, getAttachment } from "@/lib/gmail";
+import { EMAIL_PART } from "@/lib/inbox";
 import { failure, mailConnection, signedInClient } from "@/lib/inbox-server";
 
 // Shows one attachment of an inbox email, to look at before importing.
@@ -10,7 +11,7 @@ export async function GET(request: Request) {
   try {
     const { data: item } = await supabase.from("inbox_items").select("gmail_id,attachments").eq("id", params.get("id") ?? "").maybeSingle();
     const part = params.get("part") ?? "";
-    const known = (item?.attachments as { part: string }[] | undefined)?.some((a) => a.part === part);
+    const known = part === EMAIL_PART || (item?.attachments as { part: string }[] | undefined)?.some((a) => a.part === part);
     if (!item || !known) return new Response("Not found", { status: 404 });
     const connection = await mailConnection(supabase);
     if (!connection) return new Response("Inbox not connected", { status: 409 });
