@@ -2,11 +2,11 @@
 
 _Last updated: 2026-10-01 by session 2 (download by month)._
 
-## Live now (`main` = production, commit `2248f22`)
+## Live now (`main` = production, commit `c576403`)
 
 | Area | What works |
 | --- | --- |
-| Documents | Scan (phone camera → multi-page PDF), upload, drag-and-drop anywhere; Claude reads vendor, date, total, VAT, currency, invoice no., category; search, date range, category and status filters; ZIP download with `Summary.xlsx`; "Booked in accounting" tick + "mark as booked?" after download |
+| Documents | Scan (phone camera → multi-page PDF), upload, drag-and-drop anywhere; Claude reads vendor, date, total, VAT, currency, invoice no., category; search, date range, category and status filters; **Download by month** (no selection → month/quarter picker → ZIP with `Summary.xlsx` + a folder per month, PDFs only, card statements optional) or a selection as is; "Booked in accounting" tick + "mark as booked?" after download |
 | Reading | Receipts/invoices: **Claude Sonnet 5.5**. Card statements: **Claude Opus 5.5**. Cost per read stored; monthly total in the account menu |
 | Bank | Import ING Belgium CSV (any CSV; Claude maps unknown layouts). Dedupe by ING entry number (`bank_ref`). Payee names pulled out of ING descriptions. Tabs: Missing receipt / To approve / Matched / No receipt needed / Receipts not in bank |
 | Card | Upload the credit-card statement PDF (or CSV); Claude lists purchases as card lines; statement is a document matched to the "Payment ING : MASTERCARD" bank line; Statements tab |
@@ -22,8 +22,8 @@ _Last updated: 2026-10-01 by session 2 (download by month)._
 
 ## Open items / waiting on the user
 
-- **Download by month** (Documents → *Download* with nothing selected): built in session 2, lint/tsc/e2e
-  (67 checks) green, committed on `main` but not pushed — waits for the user's "push to main".
+- Download by month is live but not yet tried by the user on real documents; ask how the ZIP worked in
+  the accounting tool (folder names, card statements, PDFs) and adjust.
 - July card statement ↔ bank line 16 Jul €565.91: user to approve under Bank → To approve.
 - Many card lines and ~34 bank lines still need receipts (user's ongoing work).
 - WinAuditor (accountant's tool): no public API found. Idea: ask the accountant whether the WinAuditor file has an inbox e-mail for purchase invoices → app could forward matched receipts. Not started.
@@ -39,5 +39,5 @@ _Last updated: 2026-10-01 by session 2 (download by month)._
 
 Download by month for the accounting tool: month/quarter picker, ZIP with a folder per month (PDFs only,
 pictures converted), card statements optional, summary on top. New `download-dialog.tsx`, `byMonth` option
-in `downloadZip`; e2e steps in `run.js` and `run-bank.js`. Production data untouched (read-only checks:
-43 documents Jul–Sep 2026, all PDFs, 3 card statements).
+in `downloadZip`; e2e steps in `run.js` and `run-bank.js` (67 checks green). Pushed to `main` on the user's
+go-ahead. Production data untouched (read-only checks: 43 documents Jul–Sep 2026, all PDFs, 3 statements).
