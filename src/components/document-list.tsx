@@ -1,13 +1,18 @@
 "use client";
 
-import { memo } from "react";
+import { memo, useEffect, useState } from "react";
 import { CircleCheck, Download, FileText, Image as ImageIcon, Landmark } from "lucide-react";
 import type { Transaction } from "@/lib/bank";
 import { isImage, type Doc } from "@/lib/documents";
+import { toISODate } from "@/lib/dates";
 import { formatDay, formatMoney, formatMonth, formatShortDay, totalsByCurrency } from "@/lib/format";
+
+// "added": newest uploads first, grouped by the day they were added; "date": by document date, per month.
+export type ListOrder = "added" | "date";
 
 type Props = {
   docs: Doc[];
+  order: ListOrder;
   selected: Set<string>;
   reading: Set<string>;
   paid: Map<string, Transaction>;
@@ -16,20 +21,28 @@ type Props = {
   onDownload: (doc: Doc) => void;
 };
 
-export function DocumentList({ docs, selected, reading, paid, onToggle, onOpen, onDownload }: Props) {
-  const groups: { month: string; docs: Doc[] }[] = [];
+export function DocumentList({ docs, order, selected, reading, paid, onToggle, onOpen, onDownload }: Props) {
+  // Upload days use the browser's time zone once mounted; the server render uses UTC so both match.
+  const [local, setLocal] = useState(false);
+  useEffect(() => {
+    // eslint-disable-next-line react-hooks/set-state-in-effect -- switch to local days after hydration
+    setLocal(true);
+  }, []);
+  const day = (iso: string) => (local ? toISODate(new Date(iso)) : iso.slice(0, 10));
+
+  const groups: { key: string; label: string; docs: Doc[] }[] = [];
   for (const doc of docs) {
-    const month = doc.doc_date.slice(0, 7);
+    const key = order === "added" ? day(doc.created_at) : doc.doc_date.slice(0, 7);
     const last = groups[groups.length - 1];
-    if (last?.month === month) last.docs.push(doc);
-    else groups.push({ month, docs: [doc] });
+    if (last?.key === key) last.docs.push(doc);
+    else groups.push({ key, label: order === "added" ? addedLabel(key, day(new Date().toISOString())) : formatMonth(key), docs: [doc] });
   }
 
   return (
     <div className="space-y-6">
       {groups.map((group) => (
-        <section key={group.month} className="[content-visibility:auto] [contain-intrinsic-size:auto_600px]">
-          <MonthHeader month={group.month} docs={group.docs} />
+        <section key={group.key} className="[content-visibility:auto] [contain-intrinsic-size:auto_600px]">
+          <GroupHeader label={group.label} docs={group.docs} />
           <ul className="overflow-hidden rounded-2xl border border-rule bg-card">
             {group.docs.map((doc) => (
               <Row
@@ -50,11 +63,17 @@ export function DocumentList({ docs, selected, reading, paid, onToggle, onOpen, 
   );
 }
 
-function MonthHeader({ month, docs }: { month: string; docs: Doc[] }) {
+// "Added today", "Added yesterday", "Added 28 Sep 2026".
+function addedLabel(day: string, today: string) {
+  const yesterday = toISODate(new Date(new Date(`${today}T12:00:00`).getTime() - 86_400_000));
+  return day === today ? "Added today" : day === yesterday ? "Added yesterday" : `Added ${formatDay(day)}`;
+}
+
+function GroupHeader({ label, docs }: { label: string; docs: Doc[] }) {
   const totals = totalsByCurrency(docs);
   return (
     <h3 className="mb-2 flex items-baseline gap-3 px-1 text-[0.7rem] font-semibold tracking-[0.14em] text-muted uppercase">
-      <span>{formatMonth(month)}</span>
+      <span>{label}</span>
       <span className="h-px flex-1 translate-y-[-0.2em] bg-rule" aria-hidden="true" />
       <span className="nums tracking-normal normal-case">
         {totals.map((t) => formatMoney(t.total, t.currency)).join(" · ")}

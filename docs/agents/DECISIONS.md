@@ -2,6 +2,11 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-01 — Documents list: newest uploads first
+User wants to find what they just added without searching. Default order is *Recently added* (by
+`created_at`, groups "Added today/yesterday/<day>"); *By document date* (per month) is one select away and
+remembered per device. Upload-day groups use UTC on the server render and local time after mount.
+
 ## 2026-10-01 — One document, several payments
 Insurance policies, contracts and loans are paid in instalments (LRS: €604.87 per quarter, one policy PDF).
 A "Covers several payments" switch on the document keeps it matchable; each later payment of the same payee

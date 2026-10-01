@@ -2,10 +2,10 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Camera, ChevronDown, Download, LoaderCircle, Plus, Search, Upload, X } from "lucide-react";
+import { CalendarDays, Camera, ChevronDown, Download, Inbox, LoaderCircle, Plus, Search, Upload, X } from "lucide-react";
 import { AccountDialog } from "@/components/account-dialog";
 import { DateRangeDialog } from "@/components/date-range-dialog";
-import { DocumentList } from "@/components/document-list";
+import { DocumentList, type ListOrder } from "@/components/document-list";
 import { DocumentPanel } from "@/components/document-panel";
 import { DownloadDialog } from "@/components/download-dialog";
 import { DropOverlay } from "@/components/drop-overlay";
@@ -83,6 +83,25 @@ export function Dashboard({
   const [range, setRange] = useState<DateRange>(ALL_TIME);
   const [category, setCategory] = useState("");
   const [status, setStatus] = useState<StatusFilter>("");
+  // Newest uploads first by default; the choice is remembered on this device.
+  const [order, setOrder] = useState<ListOrder>("added");
+  useEffect(() => {
+    try {
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- reading localStorage after hydration
+      if (localStorage.getItem("docs-order") === "date") setOrder("date");
+    } catch {
+      // Storage unavailable: keep the default.
+    }
+  }, []);
+  function changeOrder(next: ListOrder) {
+    setOrder(next);
+    setLimit(PAGE_SIZE);
+    try {
+      localStorage.setItem("docs-order", next);
+    } catch {
+      // Not remembered; fine.
+    }
+  }
   const [txs, setTxs] = useState(initialTxs);
   const payments = useMemo(() => new Map(txs.filter((t) => t.document_id).map((t) => [t.document_id!, t])), [txs]);
   const [query, setQuery] = useState("");
@@ -106,14 +125,16 @@ export function Dashboard({
 
   const filtered = useMemo(() => {
     const q = deferredQuery.trim().toLowerCase();
-    return docs.filter(
+    const list = docs.filter(
       (d) =>
         inRange(d.doc_date, range) &&
         (!category || d.category === category) &&
         matchesStatus(d, status, payments) &&
         (!q || searchText(d).includes(q)),
     );
-  }, [docs, range, category, status, payments, deferredQuery]);
+    // docs are kept by document date; "added" shows the newest uploads first.
+    return order === "added" ? [...list].sort((a, b) => b.created_at.localeCompare(a.created_at)) : list;
+  }, [docs, range, category, status, payments, deferredQuery, order]);
 
   const selectedDocs = useMemo(() => filtered.filter((d) => selected.has(d.id)), [filtered, selected]);
   const scope = selectedDocs.length ? selectedDocs : filtered;
@@ -502,6 +523,15 @@ export function Dashboard({
   return (
     <div className="min-h-dvh">
       <AppHeader active="/" email={email} badges={pending} onAccount={() => setDialog("account")}>
+        <button
+          type="button"
+          onClick={() => setDialog("inbox")}
+          aria-label="Import from email"
+          className="relative hidden h-10 items-center gap-2 rounded-full border border-rule-strong px-4 text-sm font-semibold hover:bg-ink/5 sm:flex"
+        >
+          <Inbox className="size-4" /> From email
+          {inbox.items.length > 0 && <InboxCount count={inbox.items.length} />}
+        </button>
         <FileButton
           accept="image/*"
           capture
@@ -551,7 +581,7 @@ export function Dashboard({
               </kbd>
             )}
           </div>
-          <div className="flex flex-wrap gap-2 sm:flex-nowrap">
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-nowrap">
             <button
               type="button"
               onClick={() => setDialog("dates")}
@@ -582,7 +612,7 @@ export function Dashboard({
               </select>
               <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
             </div>
-            <div className="relative min-w-0 basis-full sm:basis-auto">
+            <div className="relative min-w-0">
               <select
                 value={status}
                 onChange={(e) => {
@@ -598,6 +628,18 @@ export function Dashboard({
                 <option value="unbooked">Not booked</option>
                 <option value="booked">Booked</option>
                 <option value="unpaid">No bank payment</option>
+              </select>
+              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
+            </div>
+            <div className="relative min-w-0">
+              <select
+                value={order}
+                onChange={(e) => changeOrder(e.target.value as ListOrder)}
+                aria-label="Order"
+                className="h-11 w-full appearance-none rounded-full border border-rule-strong bg-card py-0 pr-9 pl-4 text-[0.95rem] font-medium outline-none transition hover:bg-ink/5 focus:ring-4 focus:ring-accent/15 sm:w-auto"
+              >
+                <option value="added">Recently added</option>
+                <option value="date">By document date</option>
               </select>
               <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
             </div>
@@ -683,6 +725,7 @@ export function Dashboard({
           <>
             <DocumentList
               docs={filtered.slice(0, limit)}
+              order={order}
               selected={selected}
               reading={reading}
               paid={payments}
@@ -706,6 +749,15 @@ export function Dashboard({
       {/* Phone actions, in thumb reach. */}
       <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-paper via-paper/90 to-transparent px-4 pt-8 pb-[max(env(safe-area-inset-bottom),1rem)] sm:hidden">
         <div className="pointer-events-auto mx-auto flex max-w-sm items-center gap-3">
+          <button
+            type="button"
+            onClick={() => setDialog("inbox")}
+            aria-label="Import from email"
+            className="relative grid size-14 shrink-0 place-items-center rounded-full border border-rule-strong bg-card shadow-sm"
+          >
+            <Inbox className="size-6" />
+            {inbox.items.length > 0 && <InboxCount count={inbox.items.length} />}
+          </button>
           <FileButton
             accept={ACCEPT}
             multiple
@@ -795,6 +847,17 @@ export function Dashboard({
         onRead={(id) => void read(id)}
       />
     </div>
+  );
+}
+
+function InboxCount({ count }: { count: number }) {
+  return (
+    <span
+      className="nums absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[0.7rem] leading-none font-semibold text-accent-ink"
+      title={`${count} to review`}
+    >
+      {count}
+    </span>
   );
 }
 

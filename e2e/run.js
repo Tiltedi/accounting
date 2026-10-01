@@ -170,7 +170,24 @@ function watch(page, tag) {
     const text = await page.locator("main").innerText();
     assert(/3 documents/.test(text), "count label");
     assert(/€/.test(text), "euro amounts");
-    assert(/JULY 2026|July 2026/i.test(text), "month header");
+    assert(/Added today/i.test(text), "grouped by the day they were added");
+  });
+
+  await step("list order: newest upload first, or by document date (remembered)", async () => {
+    const names = async () => (await page.locator("main li").allInnerTexts()).map((t) => t.split("\n").find((l) => /ACME|Bar Centrale|Trenitalia/.test(l)));
+    const s = await state();
+    const newest = [...s.docs].sort((a, b) => b.created_at.localeCompare(a.created_at)).map((d) => d.vendor);
+    const shown = await names();
+    assert(JSON.stringify(shown.map((n) => newest.find((v) => n.includes(v)))) === JSON.stringify(newest), `added order ${shown} vs ${newest}`);
+    await page.getByLabel("Order").selectOption("date");
+    await page.getByText(/July 2026/i).first().waitFor();
+    const byDate = await names();
+    assert(/ACME/.test(byDate[0]) && /Trenitalia/.test(byDate[2]), `date order ${byDate}`);
+    await page.reload();
+    await page.getByText(/July 2026/i).first().waitFor();
+    assert((await page.getByLabel("Order").inputValue()) === "date", "choice remembered");
+    await page.getByLabel("Order").selectOption("added");
+    await page.getByText(/Added today/i).first().waitFor();
   });
 
   await step("uploading the same PDF again is caught as a duplicate", async () => {

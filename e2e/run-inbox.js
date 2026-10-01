@@ -194,6 +194,12 @@ async function shot(page, name) {
     await phone.close();
   });
 
+  await step("the From email button opens the inbox", async () => {
+    await page.getByRole("button", { name: "Import from email" }).first().click();
+    await inbox.waitFor();
+    await inbox.getByLabel("Close").click();
+  });
+
   await step("account menu: Open shows the inbox", async () => {
     await page.getByRole("button", { name: "Account" }).click();
     await page.getByRole("dialog", { name: "Account" }).getByRole("button", { name: "Open" }).click();

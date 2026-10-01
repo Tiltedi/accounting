@@ -9,7 +9,7 @@ Tailwind v4 theme tokens in `src/app/globals.css`. Vercel region `dub1` (`vercel
 
 | Route | File | What |
 | --- | --- | --- |
-| `/` | `src/components/dashboard.tsx` | Documents: upload, scan, drop, list, filters, download by month or selection, booked status |
+| `/` | `src/components/dashboard.tsx` | Documents: upload, scan, drop, "From email" (inbox), list (default *Recently added*, grouped by upload day; or *By document date*, per month; choice in localStorage `docs-order`), filters, download by month or selection, booked status |
 | `/bank` | `src/components/bank-view.tsx` (`source="bank"`) | Bank lines: tabs, import CSV, rules, billing links, approvals |
 | `/card` | same component, `source="card"` | Card lines + Statements tab |
 | `/login` | `src/app/login/*` | Email + password (Supabase). Sign-up is blocked in the DB |
