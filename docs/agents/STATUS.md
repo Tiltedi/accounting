@@ -2,7 +2,7 @@
 
 _Last updated: 2026-10-01 by session 2 (download by month, email inbox)._
 
-## Live now (`main` = production, commit `c576403`)
+## Live now (`main` = production; inbox commit `08a0f5c`)
 
 | Area | What works |
 | --- | --- |
@@ -22,11 +22,10 @@ _Last updated: 2026-10-01 by session 2 (download by month, email inbox)._
 
 ## Open items / waiting on the user
 
-- **Email inbox** (Documents → "N emails to review"; Account → Connect): built and tested on the mock
-  (e2e 78 checks), committed locally, not live. To go live: user creates the Google OAuth client and sets
-  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in Vercel; apply `supabase/migrations/*_email_inbox.sql`
-  (additive) with `apply_migration`; push to `main`; user connects admin@tiltedi.com and tries the Google
-  Workspace invoice already in that inbox. Not yet tested against real Gmail.
+- **Email inbox**: live; tables applied (migration `20261001190418`). Waiting for the user to connect
+  admin@tiltedi.com (Account → Connect the accounting mailbox) and try the Google Workspace invoice already
+  there. Not yet tested against real Gmail. Google OAuth client (Internal) created by the user; support
+  email luca@tiltedi.com; `GOOGLE_CLIENT_ID`/`SECRET` set in Vercel production.
 - Gmail → admin@ forwarding: user has a local Chrome extension ("Send to accounting", not in the repo) that
   clicks Gmail's Forward; tested by the user once (Google Workspace invoice arrived with its PDF).
 
