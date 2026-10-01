@@ -196,6 +196,75 @@ export type Database = {
         }
         Relationships: []
       }
+      inbox_items: {
+        Row: {
+          attachments: Json
+          created_at: string
+          decided_at: string | null
+          document_ids: string[]
+          gmail_id: string
+          id: string
+          mailbox: string
+          received_at: string
+          sender: string | null
+          snippet: string | null
+          status: string
+          subject: string | null
+        }
+        Insert: {
+          attachments?: Json
+          created_at?: string
+          decided_at?: string | null
+          document_ids?: string[]
+          gmail_id: string
+          id?: string
+          mailbox: string
+          received_at: string
+          sender?: string | null
+          snippet?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Update: {
+          attachments?: Json
+          created_at?: string
+          decided_at?: string | null
+          document_ids?: string[]
+          gmail_id?: string
+          id?: string
+          mailbox?: string
+          received_at?: string
+          sender?: string | null
+          snippet?: string | null
+          status?: string
+          subject?: string | null
+        }
+        Relationships: []
+      }
+      mail_connections: {
+        Row: {
+          created_at: string
+          email: string
+          id: string
+          last_checked_at: string | null
+          refresh_token: string
+        }
+        Insert: {
+          created_at?: string
+          email: string
+          id?: string
+          last_checked_at?: string | null
+          refresh_token: string
+        }
+        Update: {
+          created_at?: string
+          email?: string
+          id?: string
+          last_checked_at?: string | null
+          refresh_token?: string
+        }
+        Relationships: []
+      }
       vendor_links: {
         Row: {
           created_at: string

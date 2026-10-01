@@ -8,7 +8,8 @@
 | GitHub | `Tiltedi/accounting`; production = `main`; agent work on the session branch (e.g. `claude/…`) |
 | Vercel | project `prj_vbV3ZZtOWBtiYFEEe3eKGEjLV8vj`, team `team_6qA10vnii7y7dtRlS3Jf9gSY`, region `dub1` |
 | Supabase | project `hgappljfpkqhsnrruzvv` (eu-west-1); public URL/key defaults in `src/lib/supabase/config.ts` |
-| Env vars (Vercel) | `ANTHROPIC_API_KEY` (production; preview availability unknown), optional `COMPANY_NAME` |
+| Env vars (Vercel) | `ANTHROPIC_API_KEY` (production; preview availability unknown), optional `COMPANY_NAME`, `GOOGLE_CLIENT_ID` + `GOOGLE_CLIENT_SECRET` (inbox) |
+| Inbox OAuth | Google Cloud OAuth client (Web, consent screen *Internal* to tiltedi.com, Gmail API enabled, scope `gmail.readonly`); redirect URI `https://accounting-roan-psi.vercel.app/api/inbox/callback`. Changing the secret makes the stored token unreadable → reconnect |
 
 ## Cloud-container limits (Claude Code on the web)
 
@@ -40,7 +41,7 @@
 
 `e2e/` runs the real app (production build) against `e2e/mock-server.mjs`, which imitates Supabase auth,
 PostgREST, storage and the Anthropic API (canned answers by file name / prompt). See `e2e/README.md`.
-`./e2e/setup.sh` once per container, then `./e2e/test.sh` (≈2 min, 67 checks).
+`./e2e/setup.sh` once per container, then `./e2e/test.sh` (≈3 min, 78 checks in 3 suites).
 Don't put `next-server` or `mock-server.mjs` in an ad-hoc shell command: `start.sh`/`test.sh` kill processes
 whose command line matches, including the calling shell.
 When adding a feature: extend the mock for new tables/columns and add a step to `run-bank.js` or `run.js`.

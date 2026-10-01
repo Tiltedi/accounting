@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useState, type FormEvent } from "react";
-import { LoaderCircle, LogOut } from "lucide-react";
+import { LoaderCircle, LogOut, Mail } from "lucide-react";
 import { Dialog, DialogHeader } from "@/components/dialog";
 import { toast } from "@/components/toaster";
 import type { Client, Doc } from "@/lib/documents";
@@ -12,12 +12,18 @@ export function AccountDialog({
   email,
   supabase,
   docs = [],
+  inbox,
+  onOpenInbox,
+  onDisconnected,
   onClose,
 }: {
   open: boolean;
   email: string;
   supabase: Client;
   docs?: Doc[];
+  inbox?: string | null; // connected mailbox; undefined where the page doesn't show the inbox
+  onOpenInbox?: () => void;
+  onDisconnected?: () => void;
   onClose: () => void;
 }) {
   const router = useRouter();
@@ -37,6 +43,14 @@ export function AccountDialog({
     toast("Password changed");
   }
 
+  async function disconnect() {
+    if (!window.confirm(`Stop reading ${inbox}? Emails waiting for review are kept.`)) return;
+    const { error } = await supabase.from("mail_connections").delete().eq("email", inbox!);
+    if (error) return toast(error.message, { tone: "error" });
+    onDisconnected?.();
+    toast("Inbox disconnected");
+  }
+
   async function signOut() {
     setPending("signout");
     await supabase.auth.signOut();
@@ -54,6 +68,30 @@ export function AccountDialog({
         </div>
 
         <ReadingCost docs={docs} />
+
+        {inbox !== undefined && (
+          <div>
+            <div className="text-xs font-medium tracking-wide text-muted">Email inbox</div>
+            {inbox ? (
+              <div className="mt-0.5 flex items-center gap-2">
+                <span className="min-w-0 flex-1 truncate font-medium">{inbox}</span>
+                <button type="button" onClick={onOpenInbox} className="text-sm font-semibold text-accent hover:underline">
+                  Open
+                </button>
+                <button type="button" onClick={disconnect} className="text-sm font-medium text-muted hover:text-danger">
+                  Disconnect
+                </button>
+              </div>
+            ) : (
+              <a
+                href="/api/inbox/connect"
+                className="mt-1.5 flex h-11 w-full items-center justify-center gap-2 rounded-full border border-rule-strong font-semibold hover:bg-ink/5"
+              >
+                <Mail className="size-4" /> Connect the accounting mailbox
+              </a>
+            )}
+          </div>
+        )}
 
         <form onSubmit={changePassword} className="space-y-2">
           <label className="block">

@@ -2,6 +2,14 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-01 — Email inbox with approval
+Invoices are forwarded to admin@tiltedi.com (user's own Gmail forwarding or a local Chrome extension, kept
+out of the repo). The app reads that mailbox with the Gmail API (internal Google OAuth app, `gmail.readonly`)
+and lists new emails; nothing is imported or read by Claude until the user taps Import (user wants control
+and cost stays at zero for skipped mail). Checked on open/return instead of a cron, since approval needs the
+user anyway and a cron would need a service-role key. Rejected: paid inbound-mail service (Postmark).
+Revisit: auto-import from trusted senders, emails whose invoice is only a link (save the email as PDF).
+
 ## 2026-10-01 — Download by month for the accounting tool
 Documents → *Download* with nothing selected opens a month picker (default: last full quarter; Q1–Q4 toggle
 three months). The ZIP has `Summary.xlsx` on top and one folder per month (`2026-07 July/`) holding only

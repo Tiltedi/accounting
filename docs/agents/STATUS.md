@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 2026-10-01 by session 2 (download by month)._
+_Last updated: 2026-10-01 by session 2 (download by month, email inbox)._
 
 ## Live now (`main` = production, commit `c576403`)
 
@@ -22,6 +22,14 @@ _Last updated: 2026-10-01 by session 2 (download by month)._
 
 ## Open items / waiting on the user
 
+- **Email inbox** (Documents → "N emails to review"; Account → Connect): built and tested on the mock
+  (e2e 78 checks), committed locally, not live. To go live: user creates the Google OAuth client and sets
+  `GOOGLE_CLIENT_ID`/`GOOGLE_CLIENT_SECRET` in Vercel; apply `supabase/migrations/*_email_inbox.sql`
+  (additive) with `apply_migration`; push to `main`; user connects admin@tiltedi.com and tries the Google
+  Workspace invoice already in that inbox. Not yet tested against real Gmail.
+- Gmail → admin@ forwarding: user has a local Chrome extension ("Send to accounting", not in the repo) that
+  clicks Gmail's Forward; tested by the user once (Google Workspace invoice arrived with its PDF).
+
 - Download by month is live but not yet tried by the user on real documents; ask how the ZIP worked in
   the accounting tool (folder names, card statements, PDFs) and adjust.
 - July card statement ↔ bank line 16 Jul €565.91: user to approve under Bank → To approve.
@@ -36,6 +44,8 @@ _Last updated: 2026-10-01 by session 2 (download by month)._
 - Read-only bank connection (Ponto/PSD2) — user declined connecting the bank; don't push it.
 
 ## Last session (2026-10-01, session 2)
+
+Email inbox with approval (Gmail API, read-only; `inbox-dialog.tsx`, `/api/inbox/*`, `run-inbox.js`).
 
 Download by month for the accounting tool: month/quarter picker, ZIP with a folder per month (PDFs only,
 pictures converted), card statements optional, summary on top. New `download-dialog.tsx`, `byMonth` option

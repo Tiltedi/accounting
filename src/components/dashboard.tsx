@@ -10,6 +10,7 @@ import { DocumentPanel } from "@/components/document-panel";
 import { DownloadDialog } from "@/components/download-dialog";
 import { DropOverlay } from "@/components/drop-overlay";
 import { FileButton } from "@/components/file-button";
+import { InboxDialog, InboxStrip } from "@/components/inbox-dialog";
 import { AppHeader } from "@/components/app-header";
 import { pendingCounts } from "@/components/bank-view";
 import { offerMatch } from "@/components/match-offer";
@@ -24,6 +25,7 @@ import { DOC_COLUMNS, compareDocs, fetchAllDocuments, type Doc } from "@/lib/doc
 import { downloadOne, downloadZip } from "@/lib/export";
 import { createLimiter, imageToJpeg, jpegsToPdf, type ScanPage } from "@/lib/files";
 import { formatBytes, formatMoney, totalsByCurrency } from "@/lib/format";
+import type { InboxItem, InboxState } from "@/lib/inbox";
 import { createClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/lib/use-file-drop";
 import { DuplicateError, prepareFile, requestExtraction, uploadDocument, type PreparedFile } from "@/lib/upload";
@@ -61,7 +63,17 @@ function matchesStatus(doc: Doc, status: StatusFilter, payments: Map<string, Tra
   return true;
 }
 
-export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc[]; initialTxs: Transaction[]; email: string }) {
+export function Dashboard({
+  initialDocs,
+  initialTxs,
+  initialInbox,
+  email,
+}: {
+  initialDocs: Doc[];
+  initialTxs: Transaction[];
+  initialInbox: InboxState;
+  email: string;
+}) {
   const router = useRouter();
   const [supabase] = useState(createClient);
   const [uploadLimit] = useState(() => createLimiter(3));
@@ -80,7 +92,10 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
   const [openId, setOpenId] = useState<string | null>(null);
   const [uploads, setUploads] = useState(0);
   const [zipping, setZipping] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"dates" | "account" | "download" | null>(null);
+  const [dialog, setDialog] = useState<"dates" | "account" | "download" | "inbox" | null>(null);
+  const [inbox, setInbox] = useState(initialInbox);
+  const [checking, setChecking] = useState(false);
+  const [inboxBusy, setInboxBusy] = useState<Set<string>>(() => new Set());
   const [scanOpen, setScanOpen] = useState(false);
   const [scanPages, setScanPages] = useState<ScanPage[]>([]);
   const [scanBusy, setScanBusy] = useState(false);
@@ -307,6 +322,85 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
     [supabase],
   );
 
+  // ----- Email inbox -----------------------------------------------------------
+
+  // Looks for new emails in the connected mailbox (on open, on return, on demand).
+  const checkInbox = useCallback(
+    async (manual = false) => {
+      setChecking(true);
+      try {
+        const response = await fetch("/api/inbox/sync", { method: "POST" });
+        const result = await response.json();
+        if (!response.ok) throw new Error(result.error ?? `Checking the inbox failed (${response.status})`);
+        setInbox(result as InboxState);
+      } catch (err) {
+        if (manual) toast(errorMessage(err), { tone: "error" });
+      } finally {
+        setChecking(false);
+      }
+    },
+    [],
+  );
+
+  function setItemBusy(id: string, on: boolean) {
+    setInboxBusy((s) => {
+      const next = new Set(s);
+      if (on) next.add(id);
+      else next.delete(id);
+      return next;
+    });
+  }
+
+  const dropItem = (id: string) => setInbox((s) => ({ ...s, items: s.items.filter((i) => i.id !== id) }));
+
+  // Imports the ticked attachments, then reads them like any upload.
+  async function importEmails(list: { item: InboxItem; parts: string[] }[]) {
+    let imported = 0;
+    let known = 0;
+    for (const { item, parts } of list) {
+      if (!parts.length) continue;
+      setItemBusy(item.id, true);
+      try {
+        const response = await fetch("/api/inbox/import", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: item.id, parts }),
+        });
+        const result = (await response.json().catch(() => ({}))) as { docs?: Doc[]; existing?: string[]; error?: string };
+        if (!response.ok) throw new Error(result.error ?? `Import failed (${response.status})`);
+        for (const doc of result.docs ?? []) {
+          upsert(doc);
+          void read(doc.id);
+        }
+        imported += result.docs?.length ?? 0;
+        known += result.existing?.length ?? 0;
+        dropItem(item.id);
+      } catch (err) {
+        toast(`${item.subject ?? "Email"}: ${errorMessage(err)}`, { tone: "error" });
+      } finally {
+        setItemBusy(item.id, false);
+      }
+    }
+    if (imported || known) {
+      toast(
+        [imported && `Imported ${imported} ${imported === 1 ? "document" : "documents"}`, known && `${known} already in Documents`]
+          .filter(Boolean)
+          .join(" · "),
+      );
+    }
+  }
+
+  async function skipEmail(item: InboxItem) {
+    setItemBusy(item.id, true);
+    const { error } = await supabase
+      .from("inbox_items")
+      .update({ status: "skipped", decided_at: new Date().toISOString() })
+      .eq("id", item.id);
+    setItemBusy(item.id, false);
+    if (error) return toast(error.message, { tone: "error" });
+    dropItem(item.id);
+  }
+
   // ----- Selection -----------------------------------------------------------
 
   const toggle = useCallback((id: string) => {
@@ -333,12 +427,33 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
       .forEach((d) => void read(d.id));
   }, [initialDocs, read]);
 
+  // Check the inbox on open; report how connecting it went (?inbox=…).
+  const inboxConnected = Boolean(inbox.connected);
+  useEffect(() => {
+    const result = new URLSearchParams(window.location.search).get("inbox");
+    if (result) {
+      router.replace("/");
+      const messages: Record<string, string> = {
+        connected: "Inbox connected",
+        declined: "Google access wasn't granted",
+        failed: "Connecting the inbox failed. Try again.",
+        not_configured: "The inbox isn't set up on the server yet (Google client id and secret).",
+      };
+      toast(messages[result] ?? "Inbox: something went wrong", { tone: result === "connected" ? "default" : "error" });
+      // eslint-disable-next-line react-hooks/set-state-in-effect -- show the inbox right after connecting
+      if (result === "connected") setDialog("inbox");
+    }
+    if (inboxConnected) void checkInbox();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- once, on open
+  }, []);
+
   // Pick up changes made on another device when coming back to the app.
   useEffect(() => {
     let last = Date.now();
     const refresh = async () => {
       if (document.visibilityState !== "visible" || Date.now() - last < 30_000) return;
       last = Date.now();
+      if (inboxConnected) void checkInbox();
       try {
         setDocs(await fetchAllDocuments(supabase));
       } catch {
@@ -347,7 +462,7 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
     };
     document.addEventListener("visibilitychange", refresh);
     return () => document.removeEventListener("visibilitychange", refresh);
-  }, [supabase]);
+  }, [supabase, inboxConnected, checkInbox]);
 
   useEffect(() => {
     const { data } = supabase.auth.onAuthStateChange((event) => {
@@ -483,6 +598,8 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
           </div>
         </div>
 
+        {inbox.items.length > 0 && <InboxStrip count={inbox.items.length} onOpen={() => setDialog("inbox")} />}
+
         {docs.length > 0 && (
           <div className="mt-5 mb-3 flex items-center gap-3 pl-3 sm:pl-4">
             <input
@@ -614,7 +731,26 @@ export function Dashboard({ initialDocs, initialTxs, email }: { initialDocs: Doc
           setLimit(PAGE_SIZE);
         }}
       />
-      <AccountDialog open={dialog === "account"} email={email} supabase={supabase} docs={docs} onClose={() => setDialog(null)} />
+      <AccountDialog
+        open={dialog === "account"}
+        email={email}
+        supabase={supabase}
+        docs={docs}
+        inbox={inbox.connected}
+        onOpenInbox={() => setDialog("inbox")}
+        onDisconnected={() => setInbox({ connected: null, checkedAt: null, items: [] })}
+        onClose={() => setDialog(null)}
+      />
+      <InboxDialog
+        open={dialog === "inbox"}
+        inbox={inbox}
+        checking={checking}
+        busy={inboxBusy}
+        onClose={() => setDialog(null)}
+        onCheck={() => void checkInbox(true)}
+        onImport={(list) => void importEmails(list)}
+        onSkip={(item) => void skipEmail(item)}
+      />
       <DownloadDialog
         open={dialog === "download"}
         docs={docs}

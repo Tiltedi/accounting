@@ -99,6 +99,8 @@ function filterRows(params, source = docs) {
     if (["select", "order", "offset", "limit", "on_conflict", "columns"].includes(key)) continue;
     const m = /^eq\.(.*)$/.exec(value);
     if (m) rows = rows.filter((r) => String(r[key]) === m[1]);
+    const ne = /^neq\.(.*)$/.exec(value);
+    if (ne) rows = rows.filter((r) => String(r[key]) !== ne[1]);
     const inList = /^in\.\((.*)\)$/.exec(value);
     if (inList) {
       const values = inList[1].split(",").map((v) => v.replace(/^"|"$/g, ""));
@@ -132,6 +134,130 @@ const rules = [
 ].map(([field, pattern, exact, label], i) => ({ id: crypto.randomUUID(), created_at: new Date(Date.now() + i).toISOString(), field, pattern, exact, label }));
 
 const vendorLinks = [];
+
+// ----- Email inbox: tables, Google OAuth and the Gmail API ---------------------
+const mailConnections = [];
+const inboxItems = [];
+const TABLES = {
+  mail_connections: { rows: mailConnections, key: "email", defaults: () => ({ last_checked_at: null }) },
+  inbox_items: { rows: inboxItems, key: "gmail_id", defaults: () => ({ status: "pending", decided_at: null, document_ids: [], attachments: [], snippet: null }) },
+};
+
+// Generic PostgREST subset for the inbox tables: select/eq/neq/in/order/limit, insert, upsert, update, delete.
+async function restTable(req, res, url, table) {
+  const email = authEmail(req);
+  if (!email) return send(res, 401, { code: "PGRST301", message: "JWT required" });
+  const { rows, key, defaults } = TABLES[table];
+  const params = url.searchParams;
+  const single = (req.headers.accept ?? "").includes("vnd.pgrst.object");
+  const select = params.get("select");
+  const out = (list, status = 200) => {
+    const picked = list.map((r) => pick(r, select));
+    if (single) return picked.length === 1 ? send(res, status, picked[0]) : picked.length === 0 && req.method === "GET" ? send(res, 406, { code: "PGRST116", message: "0 rows" }) : send(res, 406, { code: "PGRST116", message: "rows" });
+    return send(res, status, picked);
+  };
+  if (req.method === "GET") {
+    let list = sortRows([...filterRows(params, rows)], params.get("order"));
+    if (params.has("limit")) list = list.slice(0, Number(params.get("limit")));
+    return out(list);
+  }
+  if (req.method === "POST") {
+    let input = JSON.parse((await body(req)).toString() || "[]");
+    if (!Array.isArray(input)) input = [input];
+    const prefer = String(req.headers.prefer ?? "");
+    const saved = [];
+    for (const item of input) {
+      const existing = rows.find((r) => r[key] === item[key]);
+      if (existing) {
+        if (prefer.includes("ignore-duplicates")) continue;
+        if (prefer.includes("merge-duplicates")) { Object.assign(existing, item); saved.push(existing); continue; }
+        return send(res, 409, { code: "23505", message: `duplicate ${key}` });
+      }
+      const row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...defaults(), ...item };
+      rows.push(row);
+      saved.push(row);
+    }
+    log({ kind: `${table}-insert`, count: saved.length });
+    return out(saved, 201);
+  }
+  if (req.method === "PATCH") {
+    const input = JSON.parse((await body(req)).toString() || "{}");
+    const list = filterRows(params, rows);
+    for (const row of list) Object.assign(row, input);
+    log({ kind: `${table}-update`, input, count: list.length });
+    return out(list);
+  }
+  if (req.method === "DELETE") {
+    for (const row of filterRows(params, rows)) rows.splice(rows.indexOf(row), 1);
+    return send(res, 204);
+  }
+  return send(res, 405, { message: "method" });
+}
+
+const b64 = (buf) => Buffer.from(buf).toString("base64url");
+const mailbox = [];
+let googleRefresh = null;
+let gmailCalls = 0;
+function addMail({ id, from, subject, snippet, files = [], at = Date.now() }) {
+  const parts = [{ partId: "0", mimeType: "text/plain", filename: "", headers: [], body: { size: 20, data: b64("Forwarded invoice") } }];
+  files.forEach((f, i) => {
+    const bytes = fs.readFileSync(new URL(`./fixtures/${f.fixture}`, import.meta.url));
+    const headers = [{ name: "Content-Disposition", value: `${f.inline ? "inline" : "attachment"}; filename="${f.name}"` }];
+    if (f.inline) headers.push({ name: "Content-ID", value: `<sig${i}>` });
+    parts.push({ partId: String(i + 1), mimeType: f.mime, filename: f.name, headers, body: { attachmentId: `att-${id}-${i}-${crypto.randomUUID()}`, size: bytes.length }, bytes });
+  });
+  mailbox.push({ id, internalDate: String(at), snippet, payload: { mimeType: "multipart/mixed", headers: [{ name: "From", value: from }, { name: "Subject", value: subject }], parts } });
+}
+addMail({ id: "m1", from: "Luca Pilurzu <luca@tiltedi.com>", subject: "Fwd: Your invoice from ACME Cloud", snippet: "Forwarded message &amp; invoice", files: [{ name: "invoice.pdf", mime: "application/octet-stream", fixture: "invoice.pdf" }], at: Date.now() - 3600_000 });
+addMail({ id: "m2", from: "Shell <noreply@shell.example>", subject: "Your fuel receipt", snippet: "Thanks for stopping by", files: [{ name: "shell.jpg", mime: "image/jpeg", fixture: "shell.jpg" }, { name: "logo.png", mime: "image/png", fixture: "ticket.png", inline: true }], at: Date.now() - 7200_000 });
+addMail({ id: "m3", from: "Google <no-reply@accounts.google.com>", subject: "Security alert", snippet: "A new sign-in", at: Date.now() - 1800_000 });
+
+async function google(req, res, url) {
+  if (url.pathname === "/google/auth") {
+    const back = new URL(url.searchParams.get("redirect_uri"));
+    back.searchParams.set("code", "mock-code");
+    back.searchParams.set("state", url.searchParams.get("state"));
+    log({ kind: "google-auth", scope: url.searchParams.get("scope"), access: url.searchParams.get("access_type") });
+    res.writeHead(302, { Location: back.toString() });
+    return res.end();
+  }
+  if (url.pathname === "/google/token" && req.method === "POST") {
+    const form = new URLSearchParams((await body(req)).toString());
+    if (form.get("client_secret") !== "test-secret") return send(res, 401, { error: "invalid_client" });
+    if (form.get("grant_type") === "authorization_code" && form.get("code") === "mock-code") {
+      googleRefresh = `refresh-${crypto.randomUUID()}`;
+      return send(res, 200, { access_token: "gmail-access", refresh_token: googleRefresh, expires_in: 3600 });
+    }
+    if (form.get("grant_type") === "refresh_token" && form.get("refresh_token") === googleRefresh) {
+      return send(res, 200, { access_token: "gmail-access", expires_in: 3600 });
+    }
+    return send(res, 400, { error: "invalid_grant" });
+  }
+  return send(res, 404, { error: "unknown google route" });
+}
+
+function gmail(req, res, url) {
+  if (req.headers.authorization !== "Bearer gmail-access") return send(res, 401, { error: { message: "Invalid Credentials" } });
+  gmailCalls++;
+  const path = url.pathname.replace(/^\/gmail\/v1\/users\/me/, "");
+  if (path === "/profile") return send(res, 200, { emailAddress: "admin@tiltedi.com" });
+  if (path === "/messages") return send(res, 200, { messages: [...mailbox].sort((a, b) => b.internalDate - a.internalDate).map((m) => ({ id: m.id })) });
+  const att = /^\/messages\/([^/]+)\/attachments\/(.+)$/.exec(path);
+  if (att) {
+    const part = mailbox.find((m) => m.id === att[1])?.payload.parts.find((p) => p.body.attachmentId === att[2]);
+    if (!part) return send(res, 404, { error: { message: "Not Found" } });
+    return send(res, 200, { size: part.bytes.length, data: b64(part.bytes) });
+  }
+  const msg = /^\/messages\/([^/]+)$/.exec(path);
+  if (msg) {
+    const m = mailbox.find((x) => x.id === msg[1]);
+    if (!m) return send(res, 404, { error: { message: "Not Found" } });
+    // Like Gmail: attachment ids change on every read.
+    for (const p of m.payload.parts) if (p.body.attachmentId) p.body.attachmentId = `att-${m.id}-${p.partId}-${crypto.randomUUID()}`;
+    return send(res, 200, JSON.parse(JSON.stringify(m, (k, v) => (k === "bytes" ? undefined : v))));
+  }
+  return send(res, 404, { error: { message: `unknown gmail route ${path}` } });
+}
 
 async function restLinks(req, res, url) {
   const email = authEmail(req);
@@ -511,9 +637,17 @@ http
       if (url.pathname.startsWith("/rest/v1/bank_transactions")) return await restTransactions(req, res, url);
       if (url.pathname.startsWith("/rest/v1/bank_rules")) return await restRules(req, res, url);
       if (url.pathname.startsWith("/rest/v1/vendor_links")) return await restLinks(req, res, url);
+      if (url.pathname.startsWith("/rest/v1/mail_connections")) return await restTable(req, res, url, "mail_connections");
+      if (url.pathname.startsWith("/rest/v1/inbox_items")) return await restTable(req, res, url, "inbox_items");
+      if (url.pathname.startsWith("/google/")) return await google(req, res, url);
+      if (url.pathname.startsWith("/gmail/v1/")) return gmail(req, res, url);
+      if (url.pathname === "/__mail" && req.method === "POST") {
+        addMail(JSON.parse((await body(req)).toString()));
+        return send(res, 200, { count: mailbox.length });
+      }
       if (url.pathname.startsWith("/storage/v1")) return await storage(req, res, url);
       if (url.pathname.startsWith("/v1/messages")) return await anthropic(req, res);
-      if (url.pathname === "/__state") return send(res, 200, { docs, txs, rules, vendorLinks, files: [...files.keys()], anthropicCalls });
+      if (url.pathname === "/__state") return send(res, 200, { docs, txs, rules, vendorLinks, files: [...files.keys()], anthropicCalls, mailConnections, inboxItems, gmailCalls });
       if (url.pathname === "/__mode") {
         anthropicMode = url.searchParams.get("anthropic") ?? anthropicMode;
         return send(res, 200, { anthropicMode });

@@ -23,6 +23,11 @@ Server pages (`src/app/*/page.tsx`) load all rows (`fetchAllDocuments`, `fetchAl
   read says `card_statement`, marks the doc and returns `notice: "card_statement"`; client then calls again
   with `kind: "card_statement"` → `extractCardStatement` (Opus) → `saveCardLines` (applies rules server-side).
 - `src/app/api/bank-columns/route.ts` — Claude maps columns of an unknown CSV from 25 sample rows.
+- `src/app/api/inbox/*` — email inbox: `connect` (Google consent, state cookie) → `callback` (stores the
+  refresh token sealed with AES-GCM, key from `GOOGLE_CLIENT_SECRET`) · `sync` (lists `in:inbox` mail since
+  last check −2 days, first time 60 days; new ones become pending `inbox_items`) · `file` (shows an
+  attachment) · `import` (stores chosen attachments as documents, sha256 dedupe, closes the item). The
+  browser then reads new documents as for uploads. Gmail calls in `src/lib/gmail.ts` (plain fetch).
 
 ## Library map (`src/lib`)
 
@@ -31,6 +36,7 @@ Server pages (`src/app/*/page.tsx`) load all rows (`fetchAllDocuments`, `fetchAl
 | `extraction.ts` | Prompts, Zod schemas, model choice (`RECEIPT_MODEL`, `STATEMENT_MODEL`), per-model pricing → `ai_cost_usd` |
 | `bank.ts` | CSV parsing, header guessing (`HEADERS`), ING name extraction (`nameFromDescription`), fingerprints, rules (`ruleFor`), billing links (`linkFor`), matching (`findMatches`), dismissed suggestions (localStorage) |
 | `bank-import.ts` | `importStatement` (dedupe incl. legacy fingerprints), `applyRules`, `approveMatches`, `linkTransaction`, `readCardStatement` |
+| `inbox.ts` / `gmail.ts` / `inbox-server.ts` | Inbox types + `fetchInbox` · Gmail API, OAuth, token sealing (server) · route helpers |
 | `upload.ts` | `prepareFile` (image → JPEG), `uploadDocument` (SHA-256 dedupe → `DuplicateError`), `requestExtraction` |
 | `files.ts` / `zip.ts` / `xlsx.ts` / `export.ts` | Client-side JPEG/PDF building, ZIP and XLSX writers, downloads (`downloadZip`, `byMonth` option) |
 | `use-file-drop.ts` | Page-wide drop hook (Documents, Bank, Card) |
@@ -39,6 +45,7 @@ Server pages (`src/app/*/page.tsx`) load all rows (`fetchAllDocuments`, `fetchAl
 
 Components worth knowing: `match-offer.ts` (toast offering a receipt's payment with Approve),
 `attach-dialog.tsx`, `billing-dialog.tsx`, `document-panel.tsx`, `download-dialog.tsx` (month picker),
+`inbox-dialog.tsx` (emails to review + the strip above the list),
 `toaster.tsx` (popover, top layer).
 
 ## Data model (`supabase/migrations/`, types in `src/lib/database.types.ts`)
@@ -50,6 +57,9 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
   `note` (rule label); `bank_ref` (bank's own line id); `fingerprint` unique.
 - `bank_rules` — field counterparty/description, pattern, exact, label.
 - `vendor_links` — pattern → billing-portal URL.
+- `mail_connections` — one mailbox (`email`, sealed `refresh_token`, `last_checked_at`).
+- `inbox_items` — one per email (`gmail_id` unique): sender, subject, snippet, `attachments` jsonb
+  `[{part, filename, mime, size, suggested}]`, `status` pending/imported/skipped, `document_ids`.
 - `private.members` — email allowlist; `private.is_member()` gates every RLS policy; sign-ups blocked by trigger.
 - Storage bucket `documents` (private, 25 MB).
 
@@ -63,6 +73,9 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
   −7…+60 days; `sure` = exact amount and (name ≥ 0.5 or unique within 7 days). Card statements only match
   bank lines. Nothing is linked without approval.
 - **Totals** skip `doc_type = statement` (their purchases have their own receipts).
+- **Inbox**: checked when Documents opens and when the app comes back into view (no cron: importing needs
+  the user anyway). Suggested ticks: PDFs, and pictures that aren't inline (signatures) and > 20 KB.
+  Attachments are found by part id at import (Gmail attachment ids change between reads).
 - **Download** (Documents toolbar): with a selection, downloads it as is (one file, or a flat ZIP). Without,
   opens the month picker (default: last full quarter; choice kept while the page is open) →
   `downloadZip(…, { byMonth: true })`: `Summary.xlsx` on top, then `2026-07 July/…` folders holding only

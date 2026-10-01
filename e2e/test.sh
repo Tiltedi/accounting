@@ -6,7 +6,7 @@ export E2E_PYTHON="${E2E_PYTHON:-/tmp/e2e-venv/bin/python}"
 (cd "$E2E/.." && NEXT_PUBLIC_SUPABASE_URL=http://localhost:54321 NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY=sb_publishable_test \
   npx next build > /tmp/e2e-build.log 2>&1) || { tail -30 /tmp/e2e-build.log; exit 1; }
 failed=0
-for suite in run.js run-bank.js; do
+for suite in run.js run-bank.js run-inbox.js; do
   "$E2E/start.sh" > /dev/null
   node "$E2E/$suite" > "/tmp/e2e-$suite.log" 2>&1
   passed=$(grep -c "^PASS" "/tmp/e2e-$suite.log")

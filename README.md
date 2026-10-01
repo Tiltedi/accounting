@@ -13,6 +13,10 @@ exactly what your accountant needs.
   the documents, all as PDFs (photos are converted; card statements can be
   left out), plus a `Summary.xlsx` listing every document. One file or a
   selection still downloads as it is.
+- **Email inbox**: forward invoices to the accounting mailbox (e.g.
+  admin@tiltedi.com). The app reads that mailbox (Gmail, read-only) and lists
+  new emails under *emails to review*; you tick attachments and tap *Import*
+  or *Skip*. Nothing is imported or read by Claude before you approve it.
 - **Bank check** (no bank connection): import the CSV statement from your
   bank's website. Payments are matched to receipts; you see which payments
   lack a receipt, which receipts have no payment, and can mark lines that
@@ -56,6 +60,7 @@ Set these in Vercel → Project → Settings → Environment Variables, then red
 | --- | --- |
 | `ANTHROPIC_API_KEY` | From [console.anthropic.com](https://console.anthropic.com/) |
 | `COMPANY_NAME` | Optional. Lets Claude recognise sales invoices you issue (filed as *Income*) |
+| `GOOGLE_CLIENT_ID`, `GOOGLE_CLIENT_SECRET` | Optional. Google OAuth client for the email inbox (see `docs/agents/OPERATIONS.md`) |
 | `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_PUBLISHABLE_KEY` | Optional. Default to this project's public values (`src/lib/supabase/config.ts`) |
 
 Without `ANTHROPIC_API_KEY` everything still works; documents are saved and
@@ -92,6 +97,8 @@ paid within a week) can be approved all at once.
   statement document and are deleted with it.
 - Table `public.bank_rules`: payees or descriptions that need no receipt.
 - Table `public.vendor_links`: billing-portal links, matched to lines by name.
+- Tables `public.mail_connections` (the connected mailbox; refresh token encrypted
+  by the server) and `public.inbox_items` (emails waiting, imported or skipped).
 - Bucket `documents` (private, 25 MB per file): the files. Downloads use your
   session or short-lived signed links.
 - The schema lives in `supabase/migrations/`.
