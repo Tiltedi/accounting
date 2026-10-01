@@ -22,8 +22,10 @@ export function Dialog({
   children: ReactNode;
 }) {
   const ref = useRef<HTMLDialogElement>(null);
+  const wanted = useRef(open);
 
   useEffect(() => {
+    wanted.current = open;
     const dialog = ref.current;
     if (!dialog) return;
     if (open && !dialog.open) dialog.showModal();
@@ -36,7 +38,11 @@ export function Dialog({
       aria-label={label}
       className={`app-dialog ${variant}`}
       style={width ? ({ "--dialog-width": `${width}px` } as CSSProperties) : undefined}
-      onClose={onClose}
+      onClose={() => {
+        // Report closes the owner didn't ask for. When the owner closed it
+        // (e.g. to open another dialog), calling onClose would undo that.
+        if (wanted.current) onClose();
+      }}
       onCancel={(event) => {
         // Escape: let the owner decide (it may ask before discarding).
         event.preventDefault();

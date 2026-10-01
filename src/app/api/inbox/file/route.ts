@@ -16,7 +16,7 @@ export async function GET(request: Request) {
     const connection = await mailConnection(supabase);
     if (!connection) return new Response("Inbox not connected", { status: 409 });
 
-    const file = await getAttachment(await accessToken(connection.refresh_token), item.gmail_id, part);
+    const file = await getAttachment(await accessToken(connection.refresh_token), item.gmail_id, part, connection.email);
     return new Response(new Uint8Array(file.bytes), {
       headers: {
         "Content-Type": file.mime,

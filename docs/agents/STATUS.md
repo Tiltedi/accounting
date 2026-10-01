@@ -23,8 +23,8 @@ _Last updated: 2026-10-01 by session 2 (download by month, email inbox)._
 ## Open items / waiting on the user
 
 - **Email inbox**: live and connected to admin@tiltedi.com (Google Workspace invoice imported from it).
-  "The email itself (as PDF)" option: committed, waiting for "push to main"; the user's Q2 VAT email
-  (€2,145.43, due 25 Jul) waits in the inbox for it. Google OAuth client (Internal) created by the user; support
+  "The email itself (as PDF)" is live (user imported the Q2 VAT email; Claude read and matched it).
+  Nicer email PDF layout + account-menu "Open" fix: committed, waiting for "push to main". Google OAuth client (Internal) created by the user; support
   email luca@tiltedi.com; `GOOGLE_CLIENT_ID`/`SECRET` set in Vercel production.
 - Gmail → admin@ forwarding: user has a local Chrome extension ("Send to accounting", not in the repo) that
   clicks Gmail's Forward; tested by the user once (Google Workspace invoice arrived with its PDF).

@@ -4,7 +4,7 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from "node:crypto";
 import { sanitizeFileName } from "@/lib/files";
 import { EMAIL_PART, type InboxAttachment } from "@/lib/inbox";
-import { textToPdf } from "@/lib/text-pdf";
+import { emailToPdf } from "@/lib/email-pdf";
 
 const AUTH_URL = process.env.GOOGLE_AUTH_URL || "https://accounts.google.com/o/oauth2/v2/auth";
 const TOKEN_URL = process.env.GOOGLE_TOKEN_URL || "https://oauth2.googleapis.com/token";
@@ -205,23 +205,22 @@ function bodyText(part: Part): string | null {
   );
 }
 
-// The email itself as a PDF (headers + text), for emails where the email is the document.
-function emailPdf(message: Message) {
-  const head = ["From", "To", "Date", "Subject"]
-    .map((name) => [name, header(message.payload, name.toLowerCase())])
-    .filter(([, value]) => value)
-    .map(([name, value]) => `${name}: ${value}`)
-    .join("\n");
-  const bytes = textToPdf(`${head}\n\n${bodyText(message.payload)?.trim() ?? "(no text)"}\n`);
-  const subject = header(message.payload, "subject")?.replace(/^(fwd?|tr|wg|re):\s*/i, "") || "Email";
+// The email itself as a PDF, for emails where the email is the document.
+async function emailPdf(message: Message, mailbox: string) {
+  const field = (name: string) => header(message.payload, name);
+  const bytes = await emailToPdf(
+    { from: field("from"), to: field("to"), date: field("date"), subject: field("subject"), text: bodyText(message.payload) ?? "" },
+    mailbox,
+  );
+  const subject = field("subject")?.replace(/^((fwd?|tr|wg|re):\s*)+/i, "") || "Email";
   return { bytes, filename: `${sanitizeFileName(subject)} (email).pdf`, mime: "application/pdf" };
 }
 
 // An attachment's bytes, found by part id (Gmail's attachment ids change between reads),
 // or the email itself as a PDF for EMAIL_PART.
-export async function getAttachment(accessToken: string, messageId: string, partId: string) {
+export async function getAttachment(accessToken: string, messageId: string, partId: string, mailbox: string) {
   const message = await api<Message>(accessToken, `/users/me/messages/${messageId}?format=full`);
-  if (partId === EMAIL_PART) return emailPdf(message);
+  if (partId === EMAIL_PART) return emailPdf(message, mailbox);
   const part = walk(message.payload).find((p) => p.partId === partId);
   if (!part) throw new GmailError("That attachment is no longer in the email.");
   const body = await api<{ data: string }>(accessToken, `/users/me/messages/${messageId}/attachments/${part.body!.attachmentId}`);

@@ -37,7 +37,7 @@ export async function POST(request: Request) {
     const created: Doc[] = [];
     const existing: string[] = [];
     for (const part of parts) {
-      const file = await getAttachment(token, item.gmail_id, part);
+      const file = await getAttachment(token, item.gmail_id, part, connection.email);
       if (file.bytes.length > MAX_UPLOAD_BYTES) throw new GmailError(`${file.filename} is over 25 MB`);
       const sha256 = createHash("sha256").update(file.bytes).digest("hex");
       const { data: same } = await supabase.from("documents").select("id").eq("sha256", sha256).maybeSingle();
