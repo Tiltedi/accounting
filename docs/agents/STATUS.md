@@ -24,7 +24,10 @@ _Last updated: 2026-10-01 by session 2 (download by month, email inbox)._
 
 - **Email inbox**: live and connected to admin@tiltedi.com (Google Workspace invoice imported from it).
   "The email itself (as PDF)" is live (user imported the Q2 VAT email; Claude read and matched it).
-  Nicer email PDF layout + account-menu "Open" fix: committed, waiting for "push to main". Google OAuth client (Internal) created by the user; support
+  Nicer email PDF layout + account-menu "Open" fix: live.
+- Unmatch-on-delete trigger: applied to production; the stuck VAT line (21 Jul, €2,145.43) reset to unmatched.
+- "Covers several payments" (recurring documents): committed; migration `*_recurring_documents.sql` not yet
+  applied — apply, then push. User's LRS policy email waits in the inbox to try it. Google OAuth client (Internal) created by the user; support
   email luca@tiltedi.com; `GOOGLE_CLIENT_ID`/`SECRET` set in Vercel production.
 - Gmail → admin@ forwarding: user has a local Chrome extension ("Send to accounting", not in the repo) that
   clicks Gmail's Forward; tested by the user once (Google Workspace invoice arrived with its PDF).

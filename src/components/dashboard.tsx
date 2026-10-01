@@ -24,7 +24,7 @@ import { approveMatches, readCardStatement } from "@/lib/bank-import";
 import { DOC_COLUMNS, compareDocs, fetchAllDocuments, type Doc } from "@/lib/documents";
 import { downloadOne, downloadZip } from "@/lib/export";
 import { createLimiter, imageToJpeg, jpegsToPdf, type ScanPage } from "@/lib/files";
-import { formatBytes, formatMoney, totalsByCurrency } from "@/lib/format";
+import { formatBytes, formatDay, formatMoney, totalsByCurrency } from "@/lib/format";
 import type { InboxItem, InboxState } from "@/lib/inbox";
 import { createClient } from "@/lib/supabase/client";
 import { useFileDrop } from "@/lib/use-file-drop";
@@ -272,6 +272,12 @@ export function Dashboard({
 
   // ----- Downloads ---------------------------------------------------------
 
+  // "3 Jul 2026 · €604.87; 3 Oct 2026 · €604.87" for the summary sheet.
+  function paidText(doc: Doc) {
+    const lines = txs.filter((t) => t.document_id === doc.id).sort((a, b) => a.booked_on.localeCompare(b.booked_on));
+    return lines.length ? lines.map((t) => `${formatDay(t.booked_on)} · ${formatMoney(Math.abs(t.amount), t.currency)}`).join("; ") : null;
+  }
+
   // A single document downloads as itself; more go in a ZIP. `byMonth`: the
   // package for the accounting tool, a folder per month (see downloadZip).
   async function download(list: Doc[], name: string, byMonth = false) {
@@ -284,7 +290,7 @@ export function Dashboard({
       if (single) {
         await downloadOne(supabase, list[0]);
       } else {
-        await downloadZip(supabase, list, name, (done, total) => setZipping(`${done}/${total}`), { byMonth });
+        await downloadZip(supabase, list, name, (done, total) => setZipping(`${done}/${total}`), { byMonth, paid: paidText });
         const unbooked = list.filter((d) => !d.booked_at);
         if (unbooked.length) {
           toast(`Mark ${unbooked.length} as booked in accounting?`, {
@@ -773,7 +779,7 @@ export function Dashboard({
       <DocumentPanel
         supabase={supabase}
         doc={openDoc}
-        payment={openDoc ? (payments.get(openDoc.id) ?? null) : null}
+        payments={openDoc ? txs.filter((t) => t.document_id === openDoc.id) : []}
         reading={openDoc ? reading.has(openDoc.id) : false}
         onClose={() => setOpenId(null)}
         onSaved={upsert}

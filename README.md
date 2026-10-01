@@ -32,6 +32,9 @@ exactly what your accountant needs.
   any page. Statements are recognised wherever they land; a receipt is read
   and its payment offered with an *Approve* button (or drop it straight onto
   its line).
+- **Covers several payments**: tick this on an insurance policy, contract or
+  loan; every later payment of the same amount to that payee is offered for
+  approval with the same document.
 - **Rules**: lines from payees that never need a receipt (bank fees, salary,
   rent, suppliers that e-invoice via Peppol) are marked on import. Add one
   from any line with *Always for …*, remove it under *No receipt needed*.

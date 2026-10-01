@@ -138,6 +138,7 @@ export type Database = {
           notes: string | null
           search: string | null
           sha256: string | null
+          recurring: boolean
           size_bytes: number
           status: string
           tax: number | null
@@ -163,6 +164,7 @@ export type Database = {
           notes?: string | null
           search?: string | null
           sha256?: string | null
+          recurring?: boolean
           size_bytes: number
           status?: string
           tax?: number | null
@@ -188,6 +190,7 @@ export type Database = {
           notes?: string | null
           search?: string | null
           sha256?: string | null
+          recurring?: boolean
           size_bytes?: number
           status?: string
           tax?: number | null

@@ -27,6 +27,7 @@ const COLUMNS: Column[] = [
   { header: "VAT", width: 10 },
   { header: "Currency", width: 10 },
   { header: "Notes", width: 30 },
+  { header: "Paid", width: 30 },
   { header: "File", width: 48 },
 ];
 
@@ -38,7 +39,7 @@ export async function downloadZip(
   docs: Doc[],
   zipName: string,
   onProgress: (done: number, total: number) => void,
-  { byMonth = false } = {},
+  { byMonth = false, paid = () => null }: { byMonth?: boolean; paid?: (doc: Doc) => string | null } = {},
 ) {
   const list = byMonth ? [...docs].sort((a, b) => compareDocs(b, a)) : docs;
   const files: { data: Uint8Array; mime: string }[] = new Array(list.length);
@@ -70,6 +71,7 @@ export async function downloadZip(
     { type: "number", value: doc.tax },
     { type: "text", value: doc.currency },
     { type: "text", value: doc.notes },
+    { type: "text", value: paid(doc) },
     { type: "text", value: names[i] },
   ]);
   const summary = await createXlsx("Documents", COLUMNS, rows);

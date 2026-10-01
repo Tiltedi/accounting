@@ -543,6 +543,63 @@ async function shot(page, name) {
     assert(names.slice(1).every((n) => n.startsWith("2026-09 September/") && n.endsWith(".pdf")), "all in the month folder, all PDFs");
   });
 
+  await step("a policy covering several payments: link once, then every instalment is offered", async () => {
+    await page.getByRole("link", { name: /Doc/ }).click();
+    await page.waitForURL(APP + "/");
+    await page.waitForLoadState("networkidle");
+    await page.locator("input[type=file][multiple]").first().setInputFiles(path.join(FIX, "lrs-policy.pdf"));
+    await waitFor(async () => (await state()).docs.some((d) => d.vendor === "LRS Insurance" && d.status === "ready"), 15000, "policy read");
+    await page.getByRole("button", { name: /LRS Insurance/ }).first().click();
+    const panel = page.getByRole("dialog", { name: "Document" });
+    await panel.waitFor();
+    await page.waitForTimeout(800); // the preview loads and moves the switches down
+    await panel.getByLabel("Covers several payments").check();
+    await waitFor(async () => (await state()).docs.find((d) => d.vendor === "LRS Insurance").recurring === true, 5000, "switch saved");
+    await panel.getByLabel("Close").click();
+
+    await page.getByRole("link", { name: /Bank/ }).click();
+    await page.waitForURL(APP + "/bank");
+    await page.waitForLoadState("networkidle");
+    await page.locator("input[type=file]").first().setInputFiles(path.join(FIX, "lrs.csv"));
+    await page.getByText("Imported 2 lines").waitFor();
+    let s = await state();
+    const lrs = s.txs.filter((t) => /Polis 1082394/.test(t.description));
+    assert(lrs.length === 2 && lrs.every((t) => t.status === "unmatched"), `both instalments open: ${JSON.stringify(s.txs.filter((t) => /LRS/i.test(t.counterparty + t.description)).map((t) => [t.counterparty, t.status, t.booked_on]))}`);
+
+    // The annual total isn't an instalment: link the first payment by hand.
+    await page.getByRole("tab", { name: /Missing receipt/ }).click();
+    await page.locator("li", { hasText: "Polis 1082394 kwartaal 3" }).getByRole("button", { name: "Add receipt" }).click();
+    const picker = page.getByRole("dialog", { name: "Add receipt" });
+    await picker.getByRole("button", { name: /LRS Insurance/ }).click();
+    await waitFor(async () => (await state()).txs.filter((t) => /Polis 1082394/.test(t.description) && t.status === "matched").length === 1, 5000, "first linked");
+
+    // The other quarter is now offered with the same policy.
+    await page.getByRole("tab", { name: /To approve/ }).click();
+    const offer = page.locator("li", { hasText: "Polis 1082394 kwartaal 4" });
+    await offer.getByText("LRS Insurance", { exact: true }).first().waitFor();
+    await offer.getByRole("button", { name: "Match" }).first().click();
+    await waitFor(async () => (await state()).txs.filter((t) => /Polis 1082394/.test(t.description) && t.status === "matched").length === 2, 5000, "second linked");
+    s = await state();
+    const policy = s.docs.find((d) => d.vendor === "LRS Insurance");
+    assert(s.txs.filter((t) => /Polis 1082394/.test(t.description)).every((t) => t.document_id === policy.id), "both payments point to the policy");
+
+    await page.getByRole("link", { name: /Doc/ }).click();
+    await page.waitForURL(APP + "/");
+    await page.getByRole("button", { name: /LRS Insurance/ }).first().click();
+    await panel.getByText(/Paid 2 times · last 3 Oct 2026/).waitFor();
+    await shot(page, "16c-policy-two-payments");
+    await panel.getByLabel("Close").click();
+  });
+
+  await step("deleting a document frees its payment", async () => {
+    page.once("dialog", (d) => d.accept());
+    await page.getByRole("button", { name: /LRS Insurance/ }).first().click();
+    await page.getByRole("dialog", { name: "Document" }).getByRole("button", { name: "Delete" }).click();
+    await page.getByText("Deleted").first().waitFor();
+    const lines = (await state()).txs.filter((t) => /Polis 1082394/.test(t.description));
+    assert(lines.every((t) => t.status === "unmatched" && !t.document_id), "lines back to unmatched");
+  });
+
   await step("phone: card page and 3-tab header fit", async () => {
     const phone = await browser.newContext({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, storageState: await ctx.storageState() });
     const m = await phone.newPage();

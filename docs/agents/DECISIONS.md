@@ -2,6 +2,17 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-01 — One document, several payments
+Insurance policies, contracts and loans are paid in instalments (LRS: €604.87 per quarter, one policy PDF).
+A "Covers several payments" switch on the document keeps it matchable; each later payment of the same payee
+and an amount already paid against it is suggested under To approve. Summary.xlsx gets a "Paid" column.
+Considered: splitting the document per payment (duplicates the file) or no-receipt rules (loses the
+document the accountant needs).
+
+## 2026-10-01 — Deleting a document unmatches its lines (DB trigger)
+The FK's `on delete set null` left lines "matched" to nothing (user's VAT line got stuck; fixed: 1 row).
+A trigger now resets status; the e2e mock already behaved this way, which hid the bug.
+
 ## 2026-10-01 — Email inbox with approval
 Invoices are forwarded to admin@tiltedi.com (user's own Gmail forwarding or a local Chrome extension, kept
 out of the repo). The app reads that mailbox with the Gmail API (internal Google OAuth app, `gmail.readonly`)

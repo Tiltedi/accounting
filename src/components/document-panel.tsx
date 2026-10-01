@@ -17,7 +17,7 @@ type Props = {
   supabase: Client;
   doc: Doc | null;
   reading: boolean;
-  payment?: Transaction | null;
+  payments?: Transaction[]; // bank or card lines linked to it; undefined where not shown
   onClose: () => void;
   onSaved: (doc: Doc) => void;
   onDeleted: (id: string) => void;
@@ -53,7 +53,19 @@ function toForm(doc: Doc): Form {
   };
 }
 
-function PanelBody({ supabase, doc, reading, payment, onClose, onSaved, onDeleted, onRead }: Omit<Props, "doc"> & { doc: Doc }) {
+function PaidLine({ payments }: { payments: Transaction[] }) {
+  if (!payments.length) return <span className="text-muted">No payment linked</span>;
+  const sorted = [...payments].sort((a, b) => a.booked_on.localeCompare(b.booked_on));
+  const last = sorted[sorted.length - 1];
+  const how = (t: Transaction) => `${t.source === "card" ? " by card" : ""} ${formatDay(t.booked_on)} · ${formatMoney(Math.abs(t.amount), t.currency)}`;
+  return (
+    <span className="text-accent" title={sorted.map((t) => how(t).trim()).join("\n")}>
+      {sorted.length === 1 ? `Paid${how(last)}` : `Paid ${sorted.length} times · last${how(last)}`}
+    </span>
+  );
+}
+
+function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDeleted, onRead }: Omit<Props, "doc"> & { doc: Doc }) {
   const initial = toForm(doc);
   const [form, setForm] = useState<Form>(initial);
   const [busy, setBusy] = useState<"save" | "delete" | "download" | null>(null);
@@ -107,21 +119,30 @@ function PanelBody({ supabase, doc, reading, payment, onClose, onSaved, onDelete
   }
 
   const [booked, setBooked] = useState(Boolean(doc.booked_at));
+  // Shows the saved value unless a change is in flight (the panel can remount mid-save).
+  const [pendingRecurring, setPendingRecurring] = useState<boolean | null>(null);
+  const recurring = pendingRecurring ?? Boolean(doc.recurring);
 
-  async function toggleBooked() {
-    const next = !booked;
-    setBooked(next);
-    const { data, error } = await supabase
-      .from("documents")
-      .update({ booked_at: next ? new Date().toISOString() : null })
-      .eq("id", doc.id)
-      .select(DOC_COLUMNS)
-      .single();
+  // Saves one switch at once; flips it back if saving fails.
+  async function saveSwitch(update: DocUpdate, undo: () => void) {
+    const { data, error } = await supabase.from("documents").update(update).eq("id", doc.id).select(DOC_COLUMNS).single();
     if (error) {
-      setBooked(!next);
+      undo();
       return toast(error.message, { tone: "error" });
     }
     onSaved(data as Doc);
+  }
+
+  function toggleBooked() {
+    const next = !booked;
+    setBooked(next);
+    void saveSwitch({ booked_at: next ? new Date().toISOString() : null }, () => setBooked(!next));
+  }
+
+  function toggleRecurring() {
+    const next = !recurring;
+    setPendingRecurring(next);
+    void saveSwitch({ recurring: next }, () => setPendingRecurring(null)).then(() => setPendingRecurring(null));
   }
 
   async function remove() {
@@ -179,13 +200,16 @@ function PanelBody({ supabase, doc, reading, payment, onClose, onSaved, onDelete
             />
             Booked in accounting
           </label>
-          {payment !== undefined && (
-            <span className={payment ? "text-accent" : "text-muted"}>
-              {payment
-                ? `Paid${payment.source === "card" ? " by card" : ""} ${formatDay(payment.booked_on)} · ${formatMoney(Math.abs(payment.amount), payment.currency)}`
-                : "No payment linked"}
-            </span>
-          )}
+          <label className="flex cursor-pointer items-center gap-2 font-medium" title="For a policy, contract or loan paid in instalments">
+            <input
+              type="checkbox"
+              checked={recurring}
+              onChange={toggleRecurring}
+              className="size-[1.1rem] cursor-pointer accent-(--color-accent)"
+            />
+            Covers several payments
+          </label>
+          {payments !== undefined && <PaidLine payments={payments} />}
         </div>
 
         <form id="doc-form" onSubmit={save} className="grid grid-cols-2 gap-x-3 gap-y-4 px-5 py-5">

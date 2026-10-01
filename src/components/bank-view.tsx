@@ -731,7 +731,7 @@ export function BankView({
         supabase={supabase}
         doc={openDoc}
         reading={openDoc ? reading.has(openDoc.id) : false}
-        payment={openDoc ? (txs.find((t) => t.document_id === openDoc.id) ?? null) : null}
+        payments={openDoc ? txs.filter((t) => t.document_id === openDoc.id) : []}
         onClose={() => setOpenDocId(null)}
         onSaved={upsertDoc}
         onDeleted={(id) => {

@@ -408,7 +408,7 @@ async function rest(req, res, url) {
     const row = withSearch({
       id: crypto.randomUUID(), created_at: new Date().toISOString(), created_by: users.get(email).id, status: "processing",
       sha256: null, vendor: null, description: null, category: "Other", doc_type: null, invoice_number: null, total: null, tax: null,
-      currency: null, notes: null, extraction: null, doc_date: new Date().toISOString().slice(0, 10), ...input,
+      currency: null, notes: null, extraction: null, recurring: false, doc_date: new Date().toISOString().slice(0, 10), ...input,
     });
     const err = validate(row);
     if (err) return send(res, err.code === "23505" ? 409 : 400, err);
@@ -614,6 +614,7 @@ async function anthropic(req, res) {
     "vlabel.jpg": { vendor: "Vlabel", description: "Registration tax", doc_date: "2026-09-28", doc_type: "invoice", category: "Taxes & fees", invoice_number: "VL-1", total: 168.66, tax: null, currency: "EUR" },
     "card-statement": { vendor: "ING", description: "Mastercard statement", doc_date: "2026-09-01", doc_type: "other", category: "Other", invoice_number: null, total: 236.02, tax: null, currency: "EUR", card_statement: true },
     "shell.jpg": { vendor: "Shell", description: "Fuel", doc_date: "2026-08-12", doc_type: "receipt", category: "Vehicle", invoice_number: null, total: 65, tax: 11.28, currency: "EUR" },
+    "lrs-policy": { vendor: "LRS Insurance", description: "Car insurance policy 1082394, quarterly premium", doc_date: "2026-06-20", doc_type: "other", category: "Insurance", invoice_number: "1082394", total: 2419.48, tax: null, currency: "EUR" },
     "BTW Aangifte": { vendor: "FOD Financiën – btw-ontvangsten", description: "Btw-aangifte 2de kwartaal 2026", doc_date: "2026-07-21", doc_type: "other", category: "Taxes & fees", invoice_number: "+++078/7646/33429+++", total: 2145.43, tax: null, currency: "EUR" },
     Scan: { vendor: "Google Cloud", description: "Workspace subscription", doc_date: "2026-09-20", doc_type: "invoice", category: "Software", invoice_number: "GC-9921", total: 12.34, tax: null, currency: "USD" },
   };

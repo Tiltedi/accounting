@@ -57,7 +57,7 @@ function Picker({
   const txDay = Date.parse(`${tx.booked_on}T00:00:00Z`);
 
   const ranked = docs
-    .filter((d) => !linkedDocIds.has(d.id))
+    .filter((d) => d.recurring || !linkedDocIds.has(d.id)) // a document covering several payments stays pickable
     .filter((d) => !q || `${d.vendor ?? ""} ${d.description ?? ""} ${d.file_name} ${d.total?.toFixed(2) ?? ""}`.toLowerCase().includes(q))
     .map((d) => {
       const expected = expectedAmount(d);

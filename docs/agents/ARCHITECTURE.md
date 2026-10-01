@@ -50,7 +50,8 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
 
 ## Data model (`supabase/migrations/`, types in `src/lib/database.types.ts`)
 
-- `documents` — file + extracted fields; `status` processing/ready/failed; `doc_type` incl. `statement`;
+- `documents` — `recurring` = covers several payments (policy, contract, loan; matched to many lines);
+  file + extracted fields; `status` processing/ready/failed; `doc_type` incl. `statement`;
   `sha256` unique; `booked_at`; `ai_cost_usd`; `extraction` jsonb.
 - `bank_transactions` — `source` bank/card; `amount` negative = money out; `status` unmatched/matched/no_receipt;
   `document_id` (the receipt), `statement_id` (card lines → their statement, cascade delete);
@@ -71,7 +72,11 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
   for files that carry an entry number.
 - **Matching** (`findMatches`): exact amount (same currency) or foreign currency with name match, date window
   −7…+60 days; `sure` = exact amount and (name ≥ 0.5 or unique within 7 days). Card statements only match
-  bank lines. Nothing is linked without approval.
+  bank lines. Nothing is linked without approval. `recurring` documents never get used up: offered (as sure)
+  for lines of the same payee (name ≥ 0.5) whose amount equals the total or an amount already linked to
+  them, −7…+400 days; the receipt picker lists them even when linked.
+- **Deleting a document** frees its lines: FK sets `document_id` null and the trigger
+  `private.unmatch_without_document` turns `matched` back to `unmatched` (migration `20261001201204`).
 - **Totals** skip `doc_type = statement` (their purchases have their own receipts).
 - **Inbox**: checked when Documents opens and when the app comes back into view (no cron: importing needs
   the user anyway). Suggested ticks: PDFs, and pictures that aren't inline (signatures) and > 20 KB.

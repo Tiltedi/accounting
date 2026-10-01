@@ -409,11 +409,19 @@ export function expectedAmount(doc: Pick<Doc, "total" | "category">) {
 }
 
 // Pairs open lines with unlinked receipts. Every pair waits for approval;
-// `sure` ones (unambiguous) can be approved in one go.
+// `sure` ones (unambiguous) can be approved in one go. A document covering
+// several payments (`recurring`) stays available: it's offered for payments
+// to the same payee of its total or of an amount already paid against it.
 export function findMatches(txs: Transaction[], docs: Doc[], dismissed: Set<string> = new Set()): Match[] {
   const linked = new Set(txs.map((t) => t.document_id).filter(Boolean) as string[]);
+  const instalments = new Map<string, number[]>();
+  for (const t of txs) {
+    if (t.document_id && t.status === "matched") instalments.set(t.document_id, [...(instalments.get(t.document_id) ?? []), t.amount]);
+  }
   const openTxs = txs.filter((t) => t.status === "unmatched");
-  const openDocs = docs.filter((d) => !linked.has(d.id) && d.status === "ready" && d.total != null);
+  const openDocs = docs.filter(
+    (d) => d.status === "ready" && (d.recurring ? d.total != null || instalments.has(d.id) : !linked.has(d.id) && d.total != null),
+  );
 
   const pairs: (Match & { amountExact: boolean })[] = [];
   for (const tx of openTxs) {
@@ -422,9 +430,17 @@ export function findMatches(txs: Transaction[], docs: Doc[], dismissed: Set<stri
       // A card statement is paid from the bank account, never by the card itself.
       if (doc.doc_type === "statement" && tx.source !== "bank") continue;
       const lag = daysBetween(doc.doc_date, tx.booked_on); // paid after the document date
-      if (lag < -7 || lag > 60) continue;
       const names = nameScore(doc.vendor, tx);
       const sameCurrency = (doc.currency ?? "EUR") === tx.currency;
+      if (doc.recurring) {
+        // Same payee, an amount it was billed or paid before, within about a year.
+        const amounts = [...(doc.total != null ? [expectedAmount(doc)!] : []), ...(instalments.get(doc.id) ?? [])];
+        const exact = sameCurrency && amounts.some((a) => Math.abs(tx.amount - a) < 0.005);
+        if (!exact || names < 0.5 || lag < -7 || lag > 400) continue;
+        pairs.push({ txId: tx.id, docId: doc.id, score: 2 + names, sure: true, amountExact: true });
+        continue;
+      }
+      if (lag < -7 || lag > 60) continue;
       const expected = expectedAmount(doc)!;
       const amountExact = sameCurrency && Math.abs(tx.amount - expected) < 0.005;
       // Foreign-currency receipts: amounts differ, so rely on name and date.
@@ -449,11 +465,15 @@ export function findMatches(txs: Transaction[], docs: Doc[], dismissed: Set<stri
   const usedDoc = new Set<string>();
   const matches: Match[] = [];
   for (const p of pairs) {
-    if (usedTx.has(p.txId) || usedDoc.has(p.docId)) continue;
+    const doc = openDocs.find((d) => d.id === p.docId)!;
+    if (usedTx.has(p.txId) || (usedDoc.has(p.docId) && !doc.recurring)) continue;
     usedTx.add(p.txId);
     usedDoc.add(p.docId);
     const tx = openTxs.find((t) => t.id === p.txId)!;
-    const doc = openDocs.find((d) => d.id === p.docId)!;
+    if (doc.recurring) {
+      matches.push({ txId: p.txId, docId: p.docId, score: p.score, sure: true });
+      continue;
+    }
     const lag = daysBetween(doc.doc_date, tx.booked_on);
     const unique = perTx.get(p.txId) === 1 && perDoc.get(p.docId) === 1;
     // Exact amount plus either the vendor's name, or a unique amount paid within a week.
