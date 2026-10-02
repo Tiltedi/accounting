@@ -65,16 +65,21 @@ function matchesStatus(doc: Doc, status: StatusFilter, payments: Map<string, Tra
   return true;
 }
 
+// What a link from Home asks to show first (?show=inbox|download, ?status=unbooked, ?quarter=2026-Q3).
+export type DocumentsLink = { show: "inbox" | "download" | null; status: string | null; months: string[] | null };
+
 export function Dashboard({
   initialDocs,
   initialTxs,
   initialInbox,
   email,
+  link,
 }: {
   initialDocs: Doc[];
   initialTxs: Transaction[];
   initialInbox: InboxState;
   email: string;
+  link?: DocumentsLink;
 }) {
   const router = useRouter();
   const [supabase] = useState(createClient);
@@ -84,7 +89,9 @@ export function Dashboard({
   const [docs, setDocs] = useState(initialDocs);
   const [range, setRange] = useState<DateRange>(ALL_TIME);
   const [category, setCategory] = useState("");
-  const [status, setStatus] = useState<StatusFilter>("");
+  const [status, setStatus] = useState<StatusFilter>(() =>
+    ["unbooked", "booked", "unpaid"].includes(link?.status ?? "") ? (link!.status as StatusFilter) : "",
+  );
   // Newest uploads first by default; the choice is remembered on this device.
   const [order, setOrder] = useState<ListOrder>("added");
   useEffect(() => {
@@ -113,7 +120,7 @@ export function Dashboard({
   const [openId, setOpenId] = useState<string | null>(null);
   const [uploads, setUploads] = useState(0);
   const [zipping, setZipping] = useState<string | null>(null);
-  const [dialog, setDialog] = useState<"dates" | "account" | "download" | "inbox" | null>(null);
+  const [dialog, setDialog] = useState<"dates" | "account" | "download" | "inbox" | null>(link?.show ?? null);
   const [inbox, setInbox] = useState(initialInbox);
   const [checking, setChecking] = useState(false);
   const [inboxBusy, setInboxBusy] = useState<Set<string>>(() => new Set());
@@ -475,9 +482,11 @@ export function Dashboard({
   // Check the inbox on open; report how connecting it went (?inbox=…).
   const inboxConnected = Boolean(inbox.connected);
   useEffect(() => {
-    const result = new URLSearchParams(window.location.search).get("inbox");
+    const params = new URLSearchParams(window.location.search);
+    if (["show", "status", "quarter"].some((key) => params.has(key))) router.replace("/documents");
+    const result = params.get("inbox");
     if (result) {
-      router.replace("/");
+      router.replace("/documents");
       const messages: Record<string, string> = {
         connected: "Inbox connected",
         declined: "Google access wasn't granted",
@@ -540,7 +549,7 @@ export function Dashboard({
 
   return (
     <div className="min-h-dvh">
-      <AppHeader active="/" email={email} badges={pending} onAccount={() => setDialog("account")}>
+      <AppHeader active="/documents" email={email} badges={pending} onAccount={() => setDialog("account")}>
         <button
           type="button"
           onClick={() => setDialog("inbox")}
@@ -810,6 +819,7 @@ export function Dashboard({
       />
       <DownloadDialog
         open={dialog === "download"}
+        initialMonths={link?.months ?? undefined}
         docs={docs}
         reading={uploads + docs.filter((d) => d.status === "processing" || reading.has(d.id)).length}
         progress={zipping}

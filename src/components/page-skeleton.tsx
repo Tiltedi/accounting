@@ -2,8 +2,9 @@ import { AppHeader } from "@/components/app-header";
 
 // While a section loads: its real header straight away (so switching feels
 // instant) and placeholders shaped like the page.
-export function PageSkeleton({ active }: { active: "/" | "/bank" | "/card" }) {
-  const docs = active === "/";
+export function PageSkeleton({ active }: { active: "/" | "/documents" | "/bank" | "/card" }) {
+  if (active === "/") return <HomeSkeleton />;
+  const docs = active === "/documents";
   return (
     <div className="min-h-dvh" aria-busy="true" aria-label="Loading">
       <AppHeader active={active}>
@@ -42,6 +43,24 @@ export function PageSkeleton({ active }: { active: "/" | "/bank" | "/card" }) {
             </div>
           ))}
         </div>
+      </main>
+    </div>
+  );
+}
+
+function HomeSkeleton() {
+  return (
+    <div className="min-h-dvh" aria-busy="true" aria-label="Loading">
+      <AppHeader active="/" />
+      <main className="mx-auto grid max-w-5xl gap-4 px-4 pt-4 sm:px-6 sm:pt-6 lg:grid-cols-[1.2fr_1fr]" aria-hidden="true">
+        {[260, 260, 250, 250].map((height, i) => (
+          <div key={i} className="rounded-2xl border border-rule bg-card p-5 shadow-card" style={{ height }}>
+            <span className="skeleton block h-4 w-40 rounded" />
+            <span className="skeleton mt-2 block h-3 w-56 rounded" />
+            <span className="skeleton mt-6 block h-12 w-32 rounded-lg" />
+            <span className="skeleton mt-4 block h-2 rounded-full" />
+          </div>
+        ))}
       </main>
     </div>
   );

@@ -119,6 +119,11 @@ function watch(page, tag) {
     await page.getByLabel("Password").fill(PASSWORD);
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL(APP + "/");
+    await page.getByRole("region", { name: "To do" }).waitFor();
+    await page.getByText("No bank or card lines in").waitFor();
+    await shot(page, "02a-home-empty");
+    await page.getByRole("link", { name: "Documents", exact: true }).click();
+    await page.waitForURL(APP + "/documents");
     await page.getByText("No documents yet").waitFor();
     await shot(page, "02-empty-desktop");
   });
@@ -126,6 +131,9 @@ function watch(page, tag) {
   await step("signed-in visit to /login bounces to the dashboard", async () => {
     await page.goto(APP + "/login");
     await page.waitForURL(APP + "/");
+    await page.getByRole("region", { name: "To do" }).waitFor();
+    await page.goto(APP + "/documents");
+    await page.waitForLoadState("networkidle"); // files set before hydration are ignored
     await page.getByText("No documents yet").waitFor();
   });
 
@@ -471,6 +479,7 @@ EOF`).toString();
     await page.getByLabel("Password").fill("new password 2026!");
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL(APP + "/");
+    await page.goto(APP + "/documents");
     await page.getByText("3 documents").waitFor();
   });
 
@@ -510,6 +519,10 @@ EOF`).toString();
     await m.getByLabel("Password").fill("new password 2026!");
     await m.getByRole("button", { name: "Sign in" }).click();
     await m.waitForURL(APP + "/");
+    await m.getByRole("region", { name: "To do" }).waitFor();
+    await shot(m, "11b-home-phone");
+    await m.getByRole("link", { name: "Docs", exact: true }).click();
+    await m.waitForURL(APP + "/documents");
     await m.getByText("3 documents").waitFor();
     await m.waitForTimeout(300);
     await shot(m, "12-list-phone");
@@ -606,6 +619,9 @@ EOF`).toString();
     await d.getByLabel("Password").fill("new password 2026!");
     await d.getByRole("button", { name: "Sign in" }).click();
     await d.waitForURL(APP + "/");
+    await d.getByRole("region", { name: "Spending by category" }).waitFor();
+    await shot(d, "17b-home-dark");
+    await d.goto(APP + "/documents");
     await d.getByText("4 documents").waitFor();
     await shot(d, "18-list-dark");
     await d.getByRole("button", { name: /Google Cloud/ }).first().click();
@@ -615,7 +631,7 @@ EOF`).toString();
   });
 
   await step("desktop dates dialog shows two months side by side", async () => {
-    await page.goto(APP + "/");
+    await page.goto(APP + "/documents");
     await page.getByRole("button", { name: /All time/ }).click();
     const dlg = page.getByRole("dialog", { name: "Date range" });
     await dlg.waitFor();

@@ -99,6 +99,8 @@ async function shot(page, name) {
     await page.getByLabel("Password").fill("correct horse battery");
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL(APP + "/");
+    await page.goto(APP + "/documents");
+    await page.waitForLoadState("networkidle");
     await page.locator("input[type=file][multiple]").first().setInputFiles(["invoice.pdf", "receipt-photo.jpg", "ticket.png", "page1.jpg"].map((f) => path.join(FIX, f)));
     await waitFor(async () => (await state()).docs.filter((d) => d.status === "ready").length === 4, 20000, "4 docs read");
     await page.locator("input[type=file][capture]").first().setInputFiles(path.join(FIX, "page2.jpg"));
@@ -275,7 +277,7 @@ async function shot(page, name) {
 
   await step("documents: status filters", async () => {
     await page.getByRole("link", { name: "Documents" }).click();
-    await page.waitForURL(APP + "/");
+    await page.waitForURL(APP + "/documents");
     await page.getByLabel("Status").selectOption("unpaid");
     await page.getByText("1 document", { exact: true }).waitFor(); // ACME
     await page.getByLabel("Status").selectOption("booked");
@@ -311,7 +313,7 @@ async function shot(page, name) {
     await shot(m, "09-bank-phone");
     const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);
     assert(overflow <= 0, `overflow ${overflow}`);
-    await m.goto(APP + "/");
+    await m.goto(APP + "/documents");
     await m.getByText(/documents/).first().waitFor();
     await shot(m, "10-docs-phone");
     await phone.close();
@@ -497,7 +499,7 @@ async function shot(page, name) {
 
   await step("documents: new receipt → offered its card payment → approve", async () => {
     await page.getByRole("link", { name: /Doc/ }).click();
-    await page.waitForURL(APP + "/");
+    await page.waitForURL(APP + "/documents");
     await page.locator("input[type=file][multiple]").first().setInputFiles(path.join(FIX, "shell.jpg"));
     const offer = page.getByRole("status").filter({ hasText: "Shell €65.00 → card payment Shell Mechelen, 12 Aug 2026" });
     await offer.waitFor({ timeout: 15000 });
@@ -511,7 +513,7 @@ async function shot(page, name) {
 
   await step("statement is left out of document totals", async () => {
     await page.getByRole("link", { name: /Doc/ }).click();
-    await page.waitForURL(APP + "/");
+    await page.waitForURL(APP + "/documents");
     await page.getByText(/documents/).first().waitFor();
     const s = await state();
     const expected = s.docs.filter((d) => d.doc_type !== "statement" && d.currency === "EUR").reduce((a, d) => a + d.total, 0);
@@ -545,7 +547,7 @@ async function shot(page, name) {
 
   await step("a policy covering several payments: link once, then every instalment is offered", async () => {
     await page.getByRole("link", { name: /Doc/ }).click();
-    await page.waitForURL(APP + "/");
+    await page.waitForURL(APP + "/documents");
     await page.waitForLoadState("networkidle");
     await page.locator("input[type=file][multiple]").first().setInputFiles(path.join(FIX, "lrs-policy.pdf"));
     await waitFor(async () => (await state()).docs.some((d) => d.vendor === "LRS Insurance" && d.status === "ready"), 15000, "policy read");
@@ -584,7 +586,7 @@ async function shot(page, name) {
     assert(s.txs.filter((t) => /Polis 1082394/.test(t.description)).every((t) => t.document_id === policy.id), "both payments point to the policy");
 
     await page.getByRole("link", { name: /Doc/ }).click();
-    await page.waitForURL(APP + "/");
+    await page.waitForURL(APP + "/documents");
     await page.getByRole("button", { name: /LRS Insurance/ }).first().click();
     await panel.getByText(/Paid 2 times · last 3 Oct 2026/).waitFor();
     await shot(page, "16c-policy-two-payments");
@@ -600,10 +602,46 @@ async function shot(page, name) {
     assert(lines.every((t) => t.status === "unmatched" && !t.document_id), "lines back to unmatched");
   });
 
+  await step("home: to-do and quarter numbers agree with the pages", async () => {
+    const count = async (name) => Number((await page.getByRole("tab", { name }).innerText()).match(/(\d+)\s*$/)[1]);
+    const expected = {};
+    for (const source of ["bank", "card"]) {
+      await page.goto(`${APP}/${source}`);
+      await page.getByRole("tab", { name: /Missing receipt/ }).waitFor();
+      await page.waitForTimeout(300); // dismissed suggestions load after hydration
+      expected[source] = { missing: await count(/Missing receipt/), check: await count(/To approve/) };
+    }
+    await page.goto(APP + "/");
+    const todo = page.getByRole("region", { name: "To do" });
+    await todo.waitFor();
+    await page.waitForTimeout(300);
+    for (const [source, label] of [["bank", "Bank"], ["card", "Card"]]) {
+      for (const [key, text] of [["missing", "missing receipt"], ["check", "to approve"]]) {
+        const name = `${label}: ${text}: ${expected[source][key]}`;
+        assert((await todo.getByRole("link", { name }).count()) === 1, `to-do shows "${name}"`);
+      }
+    }
+    const s = await state();
+    const q3 = s.txs.filter((t) => t.booked_on >= "2026-07-01" && t.booked_on <= "2026-09-30");
+    const percent = Math.floor((q3.filter((t) => t.status !== "unmatched").length / q3.length) * 100);
+    const quarter = page.getByRole("region", { name: "Ready for the accountant?" });
+    await quarter.getByText("Q3 2026", { exact: true }).waitFor();
+    assert((await quarter.getByRole("meter").getAttribute("aria-valuenow")) === String(percent), `Q3 ${percent}% covered`);
+    await page.getByRole("region", { name: "Money out per month" }).getByRole("listitem", { name: /^September 2026: / }).waitFor();
+    assert((await page.getByRole("region", { name: "Spending by category" }).getByRole("listitem").count()) > 0, "categories drawn");
+    await shot(page, "18-home");
+    await quarter.getByRole("link", { name: "Download Q3 2026" }).click();
+    await page.waitForURL(APP + "/documents");
+    const dlg = page.getByRole("dialog", { name: "Download" });
+    await dlg.getByText("Q3 2026", { exact: true }).waitFor();
+    await dlg.getByLabel("Close").click();
+    await dlg.waitFor({ state: "hidden" });
+  });
+
   await step("phone: card page and 3-tab header fit", async () => {
     const phone = await browser.newContext({ viewport: { width: 360, height: 780 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, storageState: await ctx.storageState() });
     const m = await phone.newPage();
-    for (const url of ["/card", "/bank", "/"]) {
+    for (const url of ["/card", "/bank", "/documents", "/"]) {
       await m.goto(APP + url);
       await m.waitForTimeout(800);
       const overflow = await m.evaluate(() => document.documentElement.scrollWidth - window.innerWidth);

@@ -15,10 +15,12 @@ export function DownloadDialog({
   docs,
   reading,
   progress,
+  initialMonths,
   onClose,
   onDownload,
 }: {
   open: boolean;
+  initialMonths?: string[]; // "YYYY-MM"; default: the last full quarter
   docs: Doc[];
   reading: number; // documents still uploading or being read: their date may still change
   progress: string | null; // "12/43" while zipping
@@ -27,7 +29,7 @@ export function DownloadDialog({
 }) {
   // Kept while the page is open, so closing and reopening keeps the choice.
   const [choice, setChoice] = useState<Choice>(() => {
-    const months = lastQuarterMonths();
+    const months = initialMonths?.length ? initialMonths : lastQuarterMonths();
     return { months: new Set(months), year: Number(months[0].slice(0, 4)), statements: true };
   });
 

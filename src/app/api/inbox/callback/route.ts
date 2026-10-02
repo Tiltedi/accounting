@@ -5,7 +5,7 @@ import { callbackUrl, signedInClient } from "@/lib/inbox-server";
 // Google sends the user back here: keep the (encrypted) refresh token.
 export async function GET(request: Request) {
   const url = new URL(request.url);
-  const back = (result: string) => Response.redirect(`${url.origin}/?inbox=${result}`);
+  const back = (result: string) => Response.redirect(`${url.origin}/documents?inbox=${result}`);
   const supabase = await signedInClient();
   if (!supabase) return Response.redirect(`${url.origin}/login`);
 

@@ -24,6 +24,8 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 
 ## Open items / waiting on the user
 
+- **Home page** (dashboard: quarter check, to-do, charts, recent; Documents moved to `/documents`) is on branch
+  `claude/jolly-wozniak-8dlm36`, not live yet: user to look at the preview and say "push to live".
 - **UI refresh** (session 3) went live without the user trying the preview first: ask how it feels on the phone
   (sheets, swipe down to close, animations).
 - Try **Download by month** on real Q3 data and say how the ZIP works in the accounting tool (folder names,
@@ -47,4 +49,5 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 
 UI refresh only, no functional or data changes: 21st.dev-style tabs, toasts, sheets, empty states and sign-in;
 `motion` animations (dialogs slide in/out, phone sheets drag to close, nav pill glides, handled lines
-collapse); skeleton loading pages. Fixed a reopen race in `dialog.tsx`. e2e 85/85. Pushed to `main` on the user's go-ahead.
+collapse); skeleton loading pages. Fixed a reopen race in `dialog.tsx`. Pushed to `main` on the user's go-ahead. Then a Home page
+(start page) with quarter check, to-do, money-out and category charts; e2e 86/86.

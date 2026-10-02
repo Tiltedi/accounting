@@ -10,7 +10,8 @@ set before paint by a script in `layout.tsx` from localStorage `theme`; chosen u
 
 | Route | File | What |
 | --- | --- | --- |
-| `/` | `src/components/dashboard.tsx` | Documents: upload, scan, drop, "From email" (inbox), list (default *Recently added*, grouped by upload day; or *By document date*, per month; choice in localStorage `docs-order`), filters, download by month or selection, booked status |
+| `/` | `src/components/home-view.tsx` (numbers in `src/lib/overview.ts`) | Home: quarter check (last full quarter, % of bank+card lines matched or no-receipt; links to what's missing; Download → Documents' month picker), to-do counts (same split as the Bank/Card tabs), money out per month (12 months, EUR, card settlement lines left out), spending by category (document totals, EUR), recently added, latest bank/card dates, reading cost |
+| `/documents` | `src/components/dashboard.tsx` | Documents (links from Home: `?show=inbox` or `download`, `?status=unbooked`, `?quarter=2026-Q3`): upload, scan, drop, "From email" (inbox), list (default *Recently added*, grouped by upload day; or *By document date*, per month; choice in localStorage `docs-order`), filters, download by month or selection, booked status |
 | `/bank` | `src/components/bank-view.tsx` (`source="bank"`) | Bank lines: tabs, import CSV, rules, billing links, approvals |
 | `/card` | same component, `source="card"` | Card lines + Statements tab |
 | `/login` | `src/app/login/*` | Email + password (Supabase). Sign-up is blocked in the DB |

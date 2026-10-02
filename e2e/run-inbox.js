@@ -58,6 +58,7 @@ async function shot(page, name) {
     await page.getByLabel("Password").fill("correct horse battery");
     await page.getByRole("button", { name: "Sign in" }).click();
     await page.waitForURL(APP + "/");
+    await page.goto(APP + "/documents");
     await page.getByText("No documents yet").waitFor();
     assert(!(await page.getByText(/to review/).count()), "no strip");
     assert((await state()).gmailCalls === 0, "no Gmail calls while not connected");
@@ -186,7 +187,7 @@ async function shot(page, name) {
     await fetch(`${MOCK}/__mail`, { method: "POST", body: JSON.stringify({ id: "m6", from: "Shell <noreply@shell.example>", subject: "Another fuel receipt with a rather long subject line for the phone", snippet: "", files: [{ name: "shell-2.jpg", mime: "image/jpeg", fixture: "drop-receipt.jpg" }] }) });
     const phone = await browser.newContext({ viewport: { width: 390, height: 844 }, isMobile: true, hasTouch: true, deviceScaleFactor: 2, storageState: await ctx.storageState() });
     const m = await phone.newPage();
-    await m.goto(APP + "/");
+    await m.goto(APP + "/documents");
     await m.getByRole("button", { name: /1 email to review/ }).click();
     await m.getByRole("dialog", { name: "Inbox" }).getByRole("listitem").first().waitFor();
     await shot(m, "02-inbox-phone");

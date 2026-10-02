@@ -2,6 +2,15 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-02 — Home page as the start page
+User asked for a dashboard and chose all four parts (to-do, quarter check, spending charts, recent) and a new
+start page. Home is `/`; Documents moved to `/documents` (inbox OAuth now returns there). The quarter check
+answers "can the accountant have Qn?": share of bank and card lines that are matched or need no receipt (same
+rules as the tabs, so numbers agree). Money out leaves out the bank line that pays a card statement (the card
+lines hold those purchases); charts count euros only and say how many other-currency items were skipped.
+Charts are plain HTML in the sand accent, one series each, with a table view; no chart library. On phones Home is
+a house icon and the logo is hidden so four sections fit at 360 px.
+
 ## 2026-10-02 — UI refresh: 21st.dev patterns and motion, same functionality
 User asked for a smoother-feeling UI via the 21st.dev MCP, functionality unchanged. Kept the brand (paper/ink,
 sand accent, dark default, Instrument Sans + Plex Mono) and adapted 21st.dev components: Animated Tabs (sliding

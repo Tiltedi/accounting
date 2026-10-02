@@ -3,10 +3,12 @@
 import Link from "next/link";
 import type { ReactNode } from "react";
 import { m } from "motion/react";
+import { House } from "lucide-react";
 import { Logo } from "@/components/logo";
 
 const TABS = [
-  { href: "/", label: "Documents", short: "Docs" },
+  { href: "/", label: "Home", short: null },
+  { href: "/documents", label: "Documents", short: "Docs" },
   { href: "/bank", label: "Bank", short: "Bank" },
   { href: "/card", label: "Card", short: "Card" },
 ] as const;
@@ -32,7 +34,8 @@ export function AppHeader({
   return (
     <header className="sticky top-0 z-30 border-b border-rule/80 bg-paper/90 backdrop-blur-xl backdrop-saturate-150">
       <div className="mx-auto flex h-16 max-w-5xl items-center gap-1.5 px-4 sm:gap-2 sm:px-6">
-        <Logo className="size-8 shrink-0" />
+        {/* Phones need the room for four sections: Home is a house there, and the logo goes. */}
+        <Logo className="hidden size-8 shrink-0 sm:block" />
         <nav className="flex rounded-full bg-ink/[0.055] p-1 sm:ml-2" aria-label="Sections">
           {TABS.map((tab) => {
             const current = active === tab.href;
@@ -54,8 +57,12 @@ export function AppHeader({
                   />
                 )}
                 <span className="relative block">
-                  <span className="sm:hidden">{tab.short}</span>
-                  <span className="hidden sm:inline">{tab.label}</span>
+                  {tab.short ? (
+                    <span className="sm:hidden">{tab.short}</span>
+                  ) : (
+                    <House aria-hidden="true" className="my-0.5 size-[1.15rem] sm:hidden" />
+                  )}
+                  <span className={tab.short ? "hidden sm:inline" : "sr-only sm:not-sr-only"}>{tab.label}</span>
                 </span>
                 {badge > 0 && (
                   <span
