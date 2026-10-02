@@ -2,7 +2,7 @@
 
 _Last updated: 2026-10-02 by the handoff of session 3._
 
-## Live now (`main` = production, commit `6746049`)
+## Live now (`main` = production, commit `4e6e7d3`)
 
 | Area | What works |
 | --- | --- |
@@ -12,7 +12,7 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 | Bank / Card | ING CSV import (dedupe by entry number), card statements → card lines, tabs Missing / To approve / Matched / No receipt needed / Receipts not in bank |
 | Matching | Approval queue (never silent). **Covers several payments** documents (policy, contract, loan) are offered for every instalment of the same payee. Deleting a document frees its lines (DB trigger) |
 | Rules, billing pages | As before (6 no-receipt rules; billing-portal links) |
-| Look | Dark by default, sand accent; Account → Appearance (Dark / Light / Device) |
+| Look | Dark by default, sand accent; Account → Appearance (Dark / Light / Device). UI refresh with animations (session 3) |
 
 ## Production data (2026-10-01, end of session 2)
 
@@ -24,8 +24,8 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 
 ## Open items / waiting on the user
 
-- **UI refresh** (session 3) is only on branch `claude/jolly-wozniak-8dlm36`, not live. User to try the Vercel
-  preview (phone + laptop) and say "push to main". Same functionality; adds the `motion` library (~56 KB gzip).
+- **UI refresh** (session 3) went live without the user trying the preview first: ask how it feels on the phone
+  (sheets, swipe down to close, animations).
 - Try **Download by month** on real Q3 data and say how the ZIP works in the accounting tool (folder names,
   card statements in month folders, PDFs).
 - LRS policy: link the first €604.87 payment (3 Jul) by hand if not done; check the next instalment is offered.
@@ -47,4 +47,4 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 
 UI refresh only, no functional or data changes: 21st.dev-style tabs, toasts, sheets, empty states and sign-in;
 `motion` animations (dialogs slide in/out, phone sheets drag to close, nav pill glides, handled lines
-collapse); skeleton loading pages. Fixed a reopen race in `dialog.tsx`. e2e 85/85. Not pushed to `main`.
+collapse); skeleton loading pages. Fixed a reopen race in `dialog.tsx`. e2e 85/85. Pushed to `main` on the user's go-ahead.
