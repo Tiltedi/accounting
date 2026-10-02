@@ -129,6 +129,7 @@ async function shot(page, name) {
     assert(s.docs.length === 2 && !s.docs.some((d) => d.file_name === "logo.png"), "only the receipt imported");
     await inbox.getByText("Nothing to review").waitFor();
     await inbox.getByLabel("Close").click();
+    await inbox.waitFor({ state: "hidden" }); // its "Nothing to review" stays while it slides away
     assert(!(await page.getByText(/to review/).count()), "strip gone");
     await page.getByText("2 documents").waitFor();
   });

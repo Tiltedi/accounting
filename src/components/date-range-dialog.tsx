@@ -53,7 +53,7 @@ function RangePicker({ value, onChange }: { value: DateRange; onChange: (range: 
 
   return (
     <div className="flex min-h-0 flex-col sm:flex-row">
-      <div className="flex flex-wrap gap-2 border-b border-rule px-5 py-3 sm:w-44 sm:shrink-0 sm:flex-col sm:flex-nowrap sm:gap-1 sm:border-r sm:border-b-0 sm:px-3 sm:py-4">
+      <div className="flex flex-wrap gap-2 border-b border-rule px-5 py-3 sm:w-44 sm:shrink-0 sm:flex-col sm:flex-nowrap sm:gap-0.5 sm:border-r sm:border-b-0 sm:bg-paper/60 sm:px-2.5 sm:py-3">
         {PRESETS.map((preset) => {
           const range = presetRange(preset.id, today);
           const active = sameRange(range, value);
@@ -62,10 +62,10 @@ function RangePicker({ value, onChange }: { value: DateRange; onChange: (range: 
               key={preset.id}
               type="button"
               onClick={() => onChange(range)}
-              className={`rounded-full border px-3.5 py-2 text-left text-sm whitespace-nowrap transition sm:rounded-lg sm:border-0 sm:px-3 ${
+              className={`press rounded-full border px-3.5 py-2 text-left text-sm whitespace-nowrap sm:rounded-lg sm:border-0 sm:px-3 ${
                 active
-                  ? "border-accent bg-accent-soft font-semibold text-accent"
-                  : "border-rule-strong hover:bg-ink/5"
+                  ? "border-accent/40 bg-accent-soft font-semibold text-accent"
+                  : "border-rule-strong/80 bg-card hover:bg-ink/5 sm:bg-transparent"
               }`}
             >
               {preset.label}
@@ -90,14 +90,14 @@ function RangePicker({ value, onChange }: { value: DateRange; onChange: (range: 
           />
         </div>
         <div className="flex items-center gap-3 border-t border-rule px-5 py-3">
-          <span className={`min-w-0 flex-1 truncate text-sm ${draftRange ? "nums text-ink" : "text-muted"}`}>
+          <span key={draftRange ? rangeLabel(draftRange) : ""} className={`min-w-0 flex-1 animate-fade-in truncate text-sm ${draftRange ? "nums text-ink" : "text-muted"}`}>
             {draftRange ? rangeLabel(draftRange) : "Pick a start and end day"}
           </span>
           <button
             type="button"
             disabled={!draftRange}
             onClick={() => draftRange && onChange(draftRange)}
-            className="h-10 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover disabled:opacity-40"
+            className="press h-10 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover disabled:opacity-40 disabled:shadow-none"
           >
             Apply
           </button>

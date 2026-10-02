@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useState, type FormEvent, type ReactNode } from "react";
-import { ChevronDown, Download, ExternalLink, FileText, LoaderCircle, RotateCw, Trash2 } from "lucide-react";
+import { ChevronDown, CreditCard, Download, ExternalLink, FileText, Landmark, LoaderCircle, RotateCw, Trash2, TriangleAlert } from "lucide-react";
 import { Dialog, DialogHeader } from "@/components/dialog";
 import { toast } from "@/components/toaster";
 import { CATEGORIES, DOC_TYPES } from "@/lib/categories";
@@ -54,13 +54,17 @@ function toForm(doc: Doc): Form {
 }
 
 function PaidLine({ payments }: { payments: Transaction[] }) {
-  if (!payments.length) return <span className="text-muted">No payment linked</span>;
   const sorted = [...payments].sort((a, b) => a.booked_on.localeCompare(b.booked_on));
   const last = sorted[sorted.length - 1];
   const how = (t: Transaction) => `${t.source === "card" ? " by card" : ""} ${formatDay(t.booked_on)} · ${formatMoney(Math.abs(t.amount), t.currency)}`;
+  const Icon = last?.source === "card" ? CreditCard : Landmark;
   return (
-    <span className="text-accent" title={sorted.map((t) => how(t).trim()).join("\n")}>
-      {sorted.length === 1 ? `Paid${how(last)}` : `Paid ${sorted.length} times · last${how(last)}`}
+    <span
+      className={`flex h-7 items-center gap-1.5 rounded-full px-2.5 text-[0.8rem] font-medium ${last ? "bg-accent-soft text-accent" : "bg-ink/[0.05] text-muted"}`}
+      title={last ? sorted.map((t) => how(t).trim()).join("\n") : undefined}
+    >
+      <Icon className="size-3.5 shrink-0" />
+      <span>{!last ? "No payment linked" : sorted.length === 1 ? `Paid${how(last)}` : `Paid ${sorted.length} times · last${how(last)}`}</span>
     </span>
   );
 }
@@ -173,16 +177,17 @@ function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDelet
     <>
       <DialogHeader title={doc.vendor || doc.file_name} onClose={onClose} />
 
-      <div className="min-h-0 flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         <Preview doc={doc} url={previewUrl} inline={wide} />
 
         {processing && (
           <Banner>
-            <LoaderCircle className="size-4 animate-spin" /> Reading the document…
+            <LoaderCircle className="size-4 animate-spin" /> <span className="shimmer-text font-medium">Reading the document…</span>
           </Banner>
         )}
         {!processing && doc.status === "failed" && (
           <Banner tone="warn">
+            <TriangleAlert className="size-4 shrink-0" />
             <span className="flex-1">Couldn’t read this one. Fill it in, or try again.</span>
             <button type="button" onClick={() => onRead(doc.id)} className="font-semibold underline underline-offset-2">
               Try again
@@ -191,22 +196,12 @@ function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDelet
         )}
 
         <div className="mx-5 mt-4 flex flex-wrap items-center gap-x-4 gap-y-2 text-sm">
-          <label className="flex cursor-pointer items-center gap-2 font-medium">
-            <input
-              type="checkbox"
-              checked={booked}
-              onChange={toggleBooked}
-              className="size-[1.1rem] cursor-pointer accent-(--color-accent)"
-            />
+          <label className="flex cursor-pointer items-center gap-2.5 font-medium">
+            <input type="checkbox" checked={booked} onChange={toggleBooked} className="switch" />
             Booked in accounting
           </label>
-          <label className="flex cursor-pointer items-center gap-2 font-medium" title="For a policy, contract or loan paid in instalments">
-            <input
-              type="checkbox"
-              checked={recurring}
-              onChange={toggleRecurring}
-              className="size-[1.1rem] cursor-pointer accent-(--color-accent)"
-            />
+          <label className="flex cursor-pointer items-center gap-2.5 font-medium" title="For a policy, contract or loan paid in instalments">
+            <input type="checkbox" checked={recurring} onChange={toggleRecurring} className="switch" />
             Covers several payments
           </label>
           {payments !== undefined && <PaidLine payments={payments} />}
@@ -267,7 +262,7 @@ function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDelet
         </form>
       </div>
 
-      <div className="flex items-center gap-1 border-t border-rule px-3 py-3 sm:px-4">
+      <div className="flex items-center gap-1 border-t border-rule bg-card px-3 py-3 sm:px-4">
         <IconButton label="Delete" onClick={remove} disabled={busy !== null} danger>
           {busy === "delete" ? <LoaderCircle className="size-5 animate-spin" /> : <Trash2 className="size-5" />}
         </IconButton>
@@ -279,7 +274,7 @@ function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDelet
           type="button"
           onClick={download}
           disabled={busy !== null}
-          className="flex h-11 items-center gap-2 rounded-full border border-rule-strong px-4 text-sm font-semibold hover:bg-ink/5 disabled:opacity-50"
+          className="press flex h-11 items-center gap-2 rounded-full border border-rule-strong/80 bg-card px-4 text-sm font-semibold shadow-card hover:bg-paper disabled:opacity-50"
         >
           {busy === "download" ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
           Download
@@ -288,7 +283,7 @@ function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDelet
           type="submit"
           form="doc-form"
           disabled={!dirty || processing || busy !== null}
-          className="flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover disabled:opacity-40"
+          className="press flex h-11 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover disabled:opacity-40 disabled:shadow-none"
         >
           {busy === "save" && <LoaderCircle className="size-4 animate-spin" />}
           Save
@@ -299,7 +294,7 @@ function PanelBody({ supabase, doc, reading, payments, onClose, onSaved, onDelet
 }
 
 const input =
-  "h-11 w-full rounded-xl border border-rule-strong bg-card px-3 text-base outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15 disabled:opacity-60 sm:text-[0.95rem]";
+  "h-11 w-full rounded-xl border border-rule-strong/80 bg-card px-3 text-base shadow-card outline-none transition hover:border-rule-strong focus:border-accent focus:ring-4 focus:ring-accent/15 disabled:opacity-60 sm:text-[0.95rem]";
 
 function Select({
   value,
@@ -323,7 +318,7 @@ function Select({
 function Field({ label, className = "", children }: { label: string; className?: string; children: ReactNode }) {
   return (
     <label className={`block min-w-0 ${className}`}>
-      <span className="mb-1 block text-xs font-medium tracking-wide text-muted">{label}</span>
+      <span className="mb-1.5 block text-xs font-medium tracking-wide text-muted">{label}</span>
       {children}
     </label>
   );
@@ -332,8 +327,8 @@ function Field({ label, className = "", children }: { label: string; className?:
 function Banner({ tone = "info", children }: { tone?: "info" | "warn"; children: ReactNode }) {
   return (
     <div
-      className={`mx-5 mt-4 flex items-center gap-2 rounded-xl px-3.5 py-2.5 text-sm ${
-        tone === "warn" ? "bg-warn/10 text-warn" : "bg-accent-soft text-accent"
+      className={`mx-5 mt-4 flex animate-rise items-center gap-2 rounded-xl border px-3.5 py-2.5 text-sm ${
+        tone === "warn" ? "border-warn/20 bg-warn/10 text-warn" : "border-accent/15 bg-accent-soft text-accent"
       }`}
     >
       {children}
@@ -361,7 +356,7 @@ function IconButton({
       disabled={disabled}
       aria-label={label}
       title={label}
-      className={`grid size-11 place-items-center rounded-full transition disabled:opacity-40 ${
+      className={`press grid size-11 place-items-center rounded-full disabled:opacity-40 ${
         danger ? "text-danger hover:bg-danger-soft" : "text-muted hover:bg-ink/5 hover:text-ink"
       }`}
     >
@@ -376,9 +371,9 @@ function Preview({ doc, url, inline }: { doc: Doc; url: string | null; inline: b
       <a href={url ?? undefined} target="_blank" rel="noreferrer" className="block border-b border-rule bg-paper">
         {url ? (
           // eslint-disable-next-line @next/next/no-img-element
-          <img src={url} alt="" className="mx-auto max-h-[30dvh] w-auto object-contain sm:max-h-[46dvh]" />
+          <img src={url} alt="" className="mx-auto max-h-[30dvh] w-auto animate-fade-in object-contain sm:max-h-[46dvh]" />
         ) : (
-          <div className="h-[30dvh] animate-pulse sm:h-64" />
+          <div className="skeleton h-[30dvh] sm:h-64" />
         )}
       </a>
     );
@@ -387,21 +382,23 @@ function Preview({ doc, url, inline }: { doc: Doc; url: string | null; inline: b
   if (isPdf(doc) && inline) {
     return (
       <div className="h-[52dvh] border-b border-rule bg-paper">
-        {url ? <iframe src={url} title="Preview" className="size-full" /> : <div className="size-full animate-pulse" />}
+        {url ? <iframe src={url} title="Preview" className="size-full" /> : <div className="skeleton size-full" />}
       </div>
     );
   }
 
   return (
     <div className="flex items-center gap-3 border-b border-rule bg-paper px-5 py-5">
-      <FileText className="size-8 shrink-0 text-muted" />
+      <span className="grid size-11 shrink-0 place-items-center rounded-xl border border-rule bg-card text-muted shadow-card">
+        <FileText className="size-5" />
+      </span>
       <span className="min-w-0 flex-1 truncate text-sm text-ink-2">{doc.file_name}</span>
       <a
         href={url ?? undefined}
         target="_blank"
         rel="noreferrer"
         aria-disabled={!url}
-        className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-rule-strong bg-card px-4 text-sm font-semibold"
+        className="press flex h-10 shrink-0 items-center gap-2 rounded-full border border-rule-strong/80 bg-card px-4 text-sm font-semibold shadow-card hover:bg-paper aria-disabled:opacity-50"
       >
         <ExternalLink className="size-4" /> Open
       </a>

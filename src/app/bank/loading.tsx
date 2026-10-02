@@ -1,5 +1,5 @@
 import { PageSkeleton } from "@/components/page-skeleton";
 
 export default function Loading() {
-  return <PageSkeleton active="/" />;
+  return <PageSkeleton active="/bank" />;
 }

@@ -90,24 +90,26 @@ function Picker({
 
   return (
     <>
-      <div className="overflow-y-auto px-5 pt-3 pb-4">
+      <div className="overflow-y-auto overscroll-contain px-5 pt-3 pb-4">
         <div className="mb-2 flex items-center justify-between">
           <button
             type="button"
             onClick={() => onChoice({ ...choice, year: year - 1 })}
             disabled={year <= first}
             aria-label="Previous year"
-            className="-ml-2 grid size-10 place-items-center rounded-full hover:bg-ink/5 disabled:opacity-30"
+            className="press -ml-2 grid size-10 place-items-center rounded-full hover:bg-ink/5 disabled:opacity-30"
           >
             <ChevronLeft className="size-5" />
           </button>
-          <span className="nums text-base font-semibold">{year}</span>
+          <span key={year} className="nums animate-fade-in text-base font-semibold">
+            {year}
+          </span>
           <button
             type="button"
             onClick={() => onChoice({ ...choice, year: year + 1 })}
             disabled={year >= last}
             aria-label="Next year"
-            className="-mr-2 grid size-10 place-items-center rounded-full hover:bg-ink/5 disabled:opacity-30"
+            className="press -mr-2 grid size-10 place-items-center rounded-full hover:bg-ink/5 disabled:opacity-30"
           >
             <ChevronRight className="size-5" />
           </button>
@@ -124,7 +126,7 @@ function Picker({
                   onClick={() => set(quarter, !whole)}
                   aria-pressed={whole}
                   aria-label={`Q${q + 1} ${year}`}
-                  className={`w-11 rounded-xl text-sm font-semibold transition hover:bg-ink/5 ${whole ? "text-accent" : "text-muted"}`}
+                  className={`press w-11 rounded-xl text-sm font-semibold hover:bg-ink/5 ${whole ? "bg-accent-soft text-accent" : "text-muted"}`}
                 >
                   Q{q + 1}
                 </button>
@@ -139,8 +141,8 @@ function Picker({
                       onClick={() => set([m], !on)}
                       aria-pressed={on}
                       aria-label={`${formatMonth(m)}, ${list.length} ${list.length === 1 ? "document" : "documents"}${booked ? ", booked" : ""}`}
-                      className={`flex h-14 flex-col justify-center rounded-xl border px-3 text-left transition ${
-                        on ? "border-accent bg-accent-soft text-accent" : "border-rule-strong hover:bg-ink/5"
+                      className={`press flex h-14 flex-col justify-center rounded-xl border px-3 text-left ${
+                        on ? "border-accent/60 bg-accent-soft text-accent shadow-card" : "border-rule-strong/80 hover:border-rule-strong hover:bg-ink/[0.03]"
                       }`}
                     >
                       <span className={`text-sm font-semibold ${on || list.length ? "" : "text-muted"}`}>{formatShortMonth(m)}</span>
@@ -162,7 +164,7 @@ function Picker({
               type="checkbox"
               checked={statements}
               onChange={(e) => onChoice({ ...choice, statements: e.target.checked })}
-              className="size-[1.1rem] cursor-pointer accent-(--color-accent)"
+              className="checkbox"
             />
             <span>Card statements</span>
             <span className="nums text-muted">{statementCount}</span>
@@ -170,16 +172,20 @@ function Picker({
         )}
 
         {reading > 0 && (
-          <p className="mt-4 flex items-center gap-2 text-sm text-muted">
+          <p className="mt-4 flex items-center gap-2 text-sm">
             <LoaderCircle className="size-4 animate-spin text-accent" />
-            Still reading {reading} {reading === 1 ? "document" : "documents"}…
+            <span className="shimmer-text font-medium">
+              Still reading {reading} {reading === 1 ? "document" : "documents"}…
+            </span>
           </p>
         )}
       </div>
 
       <div className="flex items-center gap-3 border-t border-rule px-5 py-3">
         <div className="min-w-0 flex-1">
-          <div className="truncate text-sm font-semibold">{label || "Pick months"}</div>
+          <div key={label} className="animate-fade-in truncate text-sm font-semibold">
+            {label || "Pick months"}
+          </div>
           {label && (
             <div className="truncate text-xs text-muted">
               {chosen.length
@@ -192,7 +198,7 @@ function Picker({
           type="button"
           onClick={() => onDownload(chosen, `Documents – ${label}`)}
           disabled={!chosen.length || progress !== null}
-          className="flex h-10 shrink-0 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover disabled:opacity-40"
+          className="press flex h-10 shrink-0 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover disabled:opacity-40 disabled:shadow-none"
         >
           {progress !== null ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
           {progress ? <span className="nums">{progress}</span> : "Download"}

@@ -1,11 +1,11 @@
 "use client";
 
 import { useState } from "react";
-import { Ban, Search, Upload } from "lucide-react";
+import { Ban, FileText, Image as ImageIcon, Search, Upload } from "lucide-react";
 import { Dialog, DialogHeader } from "@/components/dialog";
 import { FileButton } from "@/components/file-button";
 import { expectedAmount, nameScore, type Transaction } from "@/lib/bank";
-import type { Doc } from "@/lib/documents";
+import { isImage, type Doc } from "@/lib/documents";
 import { formatDay, formatMoney } from "@/lib/format";
 
 // Pick the receipt for a bank line: closest amounts and dates first.
@@ -86,34 +86,41 @@ function Picker({
         <FileButton
           accept="application/pdf,image/*"
           onFiles={(files) => onUpload(files[0])}
-          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-accent-ink hover:bg-accent-hover"
+          className="press flex h-10 flex-1 items-center justify-center gap-2 rounded-full bg-accent text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover"
         >
           <Upload className="size-4" /> Upload receipt
         </FileButton>
         <button
           type="button"
           onClick={onNoReceipt}
-          className="flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-rule-strong text-sm font-semibold hover:bg-ink/5"
+          className="press flex h-10 flex-1 items-center justify-center gap-2 rounded-full border border-rule-strong/80 bg-card text-sm font-semibold shadow-card hover:bg-paper"
         >
           <Ban className="size-4" /> No receipt needed
         </button>
       </div>
       <div className="relative px-5 pt-3">
-        <Search className="pointer-events-none absolute top-1/2 left-8.5 mt-1.5 size-4 -translate-y-1/2 text-muted" />
+        <Search className="pointer-events-none absolute top-1/2 left-9 mt-1.5 size-4 -translate-y-1/2 text-muted" />
         <input
           type="search"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
           placeholder="Find a document"
           aria-label="Find a document"
-          className="h-10 w-full rounded-full border border-rule-strong bg-card pr-4 pl-10 text-base outline-none focus:border-accent focus:ring-4 focus:ring-accent/15 sm:text-[0.95rem]"
+          className="h-10 w-full rounded-full border border-rule-strong/80 bg-card pr-4 pl-10 text-base outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15 sm:text-[0.95rem]"
         />
       </div>
-      <ul className="min-h-0 flex-1 overflow-y-auto px-2 py-2">
+      <ul className="min-h-0 flex-1 overflow-y-auto overscroll-contain px-2 py-2">
         {ranked.length === 0 && <li className="px-3 py-6 text-center text-sm text-muted">No documents to choose from.</li>}
         {ranked.map(({ doc }) => (
           <li key={doc.id}>
-            <button type="button" onClick={() => onPick(doc)} className="flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-ink/5">
+            <button
+              type="button"
+              onClick={() => onPick(doc)}
+              className="press flex w-full items-center gap-3 rounded-xl px-3 py-2.5 text-left hover:bg-ink/5 active:bg-accent-soft"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-lg bg-ink/[0.05] text-muted">
+                {isImage(doc) ? <ImageIcon className="size-4" /> : <FileText className="size-4" />}
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{doc.vendor || doc.file_name}</span>
                 <span className="block truncate text-[0.8rem] text-muted">

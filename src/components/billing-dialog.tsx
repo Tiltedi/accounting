@@ -57,7 +57,7 @@ function Form({
   }
 
   const field =
-    "mt-1.5 h-11 w-full rounded-xl border border-rule-strong bg-card px-3.5 text-base outline-none transition focus:border-accent focus:ring-4 focus:ring-accent/15 sm:text-[0.95rem]";
+    "mt-1.5 h-11 w-full rounded-xl border border-rule-strong/80 bg-card px-3.5 text-base font-normal shadow-card outline-none transition hover:border-rule-strong focus:border-accent focus:ring-4 focus:ring-accent/15 sm:text-[0.95rem]";
 
   return (
     <form onSubmit={submit}>
@@ -79,7 +79,11 @@ function Form({
           For lines containing
           <input type="text" value={pattern} onChange={(e) => setPattern(e.target.value)} className={field} />
         </label>
-        {error && <p className="text-sm text-danger">{error}</p>}
+        {error && (
+          <p role="alert" className="animate-rise text-sm text-danger">
+            {error}
+          </p>
+        )}
       </div>
       <div className="flex items-center gap-2 border-t border-rule px-5 py-3">
         {draft.id && (
@@ -90,7 +94,7 @@ function Form({
               setBusy(true);
               void onDelete(draft.id!).catch(() => setBusy(false));
             }}
-            className="flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium text-danger hover:bg-danger-soft"
+            className="press flex h-10 items-center gap-2 rounded-full px-3 text-sm font-medium text-danger hover:bg-danger-soft"
           >
             <Trash2 className="size-4" /> Remove
           </button>
@@ -99,7 +103,7 @@ function Form({
         <button
           type="submit"
           disabled={busy}
-          className="flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
+          className="press flex h-10 items-center gap-2 rounded-full bg-accent px-5 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover disabled:opacity-60"
         >
           {busy && <LoaderCircle className="size-4 animate-spin" />} Save
         </button>

@@ -1,22 +1,24 @@
 "use client";
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { AnimatePresence, m } from "motion/react";
 import {
   ArrowDownLeft,
   ArrowUpRight,
-  CalendarDays,
   Check,
-  ChevronDown,
+  CheckCheck,
+  CircleCheck,
   CreditCard,
   ExternalLink,
   FileSpreadsheet,
   FileText,
   Globe,
+  Inbox,
   Landmark,
   Pencil,
   Link2,
   LoaderCircle,
-  Search,
+  Receipt,
   Undo2,
   Upload,
   X,
@@ -25,11 +27,14 @@ import { AccountDialog } from "@/components/account-dialog";
 import { AppHeader } from "@/components/app-header";
 import { AttachDialog } from "@/components/attach-dialog";
 import { BillingDialog, type BillingDraft } from "@/components/billing-dialog";
+import { DateChip, SearchField } from "@/components/controls";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentPanel } from "@/components/document-panel";
 import { DropOverlay } from "@/components/drop-overlay";
+import { EmptyState } from "@/components/empty-state";
 import { offerMatch } from "@/components/match-offer";
 import { FileButton } from "@/components/file-button";
+import { Tabs, type TabOption } from "@/components/tabs";
 import { toast } from "@/components/toaster";
 import {
   findMatches,
@@ -501,9 +506,9 @@ export function BankView({
   const list = tab === "unpaid" || tab === "statements" ? [] : groups[tab];
   const empty = ownTxs.length === 0 && (!card || !docs.some((d) => d.doc_type === "statement"));
 
-  const tabs: { id: Tab; label: string; count: number }[] = [
-    { id: "missing", label: "Missing receipt", count: groups.missing.length },
-    { id: "check", label: "To approve", count: groups.check.length },
+  const tabs: TabOption<Tab>[] = [
+    { id: "missing", label: "Missing receipt", count: groups.missing.length, tone: "danger" },
+    { id: "check", label: "To approve", count: groups.check.length, tone: "accent" },
     { id: "matched", label: "Matched", count: groups.matched.length },
     { id: "no_receipt", label: "No receipt needed", count: groups.no_receipt.length },
     card
@@ -520,184 +525,152 @@ export function BankView({
           disabled={busy === "import"}
           onFiles={onImport}
           label={card ? "Add statement" : "Import statement"}
-          className="flex h-10 items-center gap-2 rounded-full bg-accent px-3 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover sm:px-4"
+          className="press flex h-10 items-center gap-2 rounded-full bg-accent px-3 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover sm:px-4"
         >
           {busy === "import" ? <LoaderCircle className="size-4 animate-spin" /> : <Upload className="size-4" />}
           <span className="hidden sm:inline">{card ? "Add statement" : "Import statement"}</span>
         </FileButton>
       </AppHeader>
 
-      <main className="mx-auto max-w-5xl px-4 pt-4 pb-24 sm:px-6 sm:pt-6">
+      <main className="mx-auto max-w-5xl animate-page-in px-4 pt-4 pb-24 sm:px-6 sm:pt-6">
         {empty ? (
           <BankEmptyState card={card} busy={busy === "import"} />
         ) : (
           <>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-              <div className="relative sm:order-last sm:flex-1">
-                <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" />
-                <input
-                  type="search"
-                  value={query}
-                  onChange={(e) => setQuery(e.target.value)}
-                  placeholder="Search"
-                  aria-label="Search transactions"
-                  className="h-11 w-full rounded-full border border-rule-strong bg-card pr-4 pl-10 text-base outline-none transition placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent/15 sm:text-[0.95rem] [&::-webkit-search-cancel-button]:hidden"
-                />
+              <SearchField value={query} onChange={setQuery} label="Search transactions" className="sm:order-last sm:flex-1" />
+              <div className="flex">
+                <DateChip range={range} onClick={() => setDialog("dates")} />
               </div>
-              <button
-                type="button"
-                onClick={() => setDialog("dates")}
-                className={`flex h-11 items-center gap-2 rounded-full border px-4 text-[0.95rem] font-medium transition ${
-                  range === ALL_TIME ? "border-rule-strong bg-card hover:bg-ink/5" : "border-accent bg-accent-soft text-accent"
-                }`}
-              >
-                <CalendarDays className="size-4 shrink-0" />
-                <span className="truncate">{rangeLabel(range)}</span>
-                <ChevronDown className="ml-auto size-4 shrink-0 opacity-60" />
-              </button>
             </div>
-
-            <div className="-mx-4 mt-4 flex gap-2 overflow-x-auto px-4 pb-1 sm:mx-0 sm:flex-wrap sm:px-0" role="tablist">
-              {tabs.map((t) => (
-                <button
-                  key={t.id}
-                  type="button"
-                  role="tab"
-                  aria-selected={tab === t.id}
-                  onClick={() => setTab(t.id)}
-                  className={`flex shrink-0 items-center gap-2 rounded-full border px-3.5 py-2 text-sm font-medium whitespace-nowrap transition ${
-                    tab === t.id ? "border-ink bg-ink text-paper" : "border-rule-strong bg-card hover:bg-ink/5"
-                  }`}
-                >
-                  {t.label}
-                  <span
-                    className={`nums rounded-full px-1.5 text-xs ${
-                      tab === t.id
-                        ? "bg-paper/20"
-                        : t.id === "missing" && t.count
-                          ? "bg-danger-soft text-danger"
-                          : t.id === "check" && t.count
-                            ? "bg-accent-soft text-accent"
-                            : "bg-ink/5 text-muted"
-                    }`}
-                  >
-                    {t.count}
-                  </span>
-                </button>
-              ))}
-            </div>
-
-            {tab === "check" && sureMatches.length > 0 && (
-              <div className="mt-4 flex items-center gap-3 rounded-2xl bg-accent-soft px-4 py-3 text-sm">
-                <span className="min-w-0 flex-1 text-accent">
-                  <span className="font-semibold">{sureMatches.length}</span> sure {sureMatches.length === 1 ? "match" : "matches"}: same amount, plus the name or a close date.
-                </span>
-                <button
-                  type="button"
-                  onClick={approveAll}
-                  disabled={busy === "approve"}
-                  className="flex h-9 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink hover:bg-accent-hover disabled:opacity-60"
-                >
-                  {busy === "approve" ? <LoaderCircle className="size-4 animate-spin" /> : <Check className="size-4" />}
-                  Approve {sureMatches.length === 1 ? "" : "all "}
-                  {sureMatches.length}
-                </button>
-              </div>
-            )}
-
-            {tab === "no_receipt" && rules.length > 0 && (
-              <div className="mt-4 px-1">
-                <p className="text-sm text-muted">Automatically marked when imported:</p>
-                <ul className="mt-2 flex flex-wrap gap-2">
-                  {rules.map((rule) => (
-                    <li
-                      key={rule.id}
-                      className="flex items-center gap-1 rounded-full border border-rule-strong bg-card py-1 pr-1 pl-3 text-sm"
-                    >
-                      <span className="max-w-64 truncate">
-                        {rule.field === "description" ? `“${rule.pattern}”` : rule.pattern}
-                        {rule.label ? <span className="text-muted"> · {rule.label}</span> : null}
-                      </span>
-                      <button
-                        type="button"
-                        onClick={() => void deleteRule(rule)}
-                        aria-label={`Remove rule ${rule.pattern}`}
-                        className="grid size-6 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
-                      >
-                        <X className="size-3.5" />
-                      </button>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {tab === "missing" && billingToVisit.length > 0 && (
-              <div className="mt-4 px-1">
-                <p className="text-sm text-muted">Download from billing pages:</p>
-                <ul className="mt-2 flex flex-wrap gap-2">
-                  {billingToVisit.map(({ link, count }) => (
-                    <li key={link.id}>
-                      <a
-                        href={link.url}
-                        target="_blank"
-                        rel="noopener noreferrer"
-                        className="flex h-9 items-center gap-1.5 rounded-full border border-accent/40 bg-card px-3.5 text-sm font-semibold text-accent hover:bg-accent-soft"
-                      >
-                        {link.pattern}
-                        {count > 1 && <span className="nums text-xs font-normal opacity-70">×{count}</span>}
-                        <ExternalLink className="size-3.5" />
-                      </a>
-                    </li>
-                  ))}
-                </ul>
-              </div>
-            )}
-
-            {tab === "missing" && groups.missing.length > 0 && (
-              <div className="mt-4 flex items-center gap-3 px-1 text-sm">
-                {missingTotal > 0 && (
-                  <span className="text-muted">
-                    <span className="nums font-medium text-ink">{formatMoney(missingTotal, "EUR")}</span> paid without a receipt
-                  </span>
-                )}
-                <div className="flex-1" />
-                <button
-                  type="button"
-                  onClick={exportMissing}
-                  className="flex h-9 shrink-0 items-center gap-2 rounded-full border border-rule-strong bg-card px-3.5 text-sm font-semibold hover:bg-ink/5"
-                >
-                  <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">Export list</span>
-                  <span className="sm:hidden">Export</span>
-                </button>
-              </div>
-            )}
 
             <div className="mt-4">
-              {tab === "unpaid" ? (
-                <UnpaidList docs={unpaid} onOpen={setOpenDocId} />
-              ) : tab === "statements" ? (
-                <StatementList docs={statements} txs={txs} onOpen={setOpenDocId} />
-              ) : list.length === 0 ? (
-                <p className="mt-10 text-center font-medium text-muted">
-                  {tab === "missing" ? "Every payment has a receipt." : tab === "check" ? "Nothing to approve." : "Nothing here."}
-                </p>
-              ) : (
-                <TxList
-                  txs={list}
-                  busy={busy}
-                  docsById={docsById}
-                  suggestionFor={suggestionFor}
-                  links={links}
-                  onBilling={setBilling}
-                  onAttach={setAttachId}
-                  onOpenDoc={setOpenDocId}
-                  onLink={link}
-                  onDismiss={dismiss}
-                  dragging={dragging}
-                  onDropFile={(tx, file) => void uploadFor(tx, file)}
-                />
+              <Tabs tabs={tabs} value={tab} onChange={setTab} />
+            </div>
+
+            <div key={tab} className="animate-fade-in">
+              {tab === "check" && sureMatches.length > 0 && (
+                <div className="mt-4 flex items-center gap-3 rounded-2xl border border-accent/20 bg-accent-soft py-2.5 pr-2.5 pl-4 text-sm">
+                  <span className="min-w-0 flex-1 text-accent">
+                    <span className="font-semibold">{sureMatches.length}</span> sure {sureMatches.length === 1 ? "match" : "matches"}: same amount, plus the name or a close date.
+                  </span>
+                  <button
+                    type="button"
+                    onClick={approveAll}
+                    disabled={busy === "approve"}
+                    className="press flex h-9 shrink-0 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover disabled:opacity-60"
+                  >
+                    {busy === "approve" ? <LoaderCircle className="size-4 animate-spin" /> : <CheckCheck className="size-4" />}
+                    Approve {sureMatches.length === 1 ? "" : "all "}
+                    {sureMatches.length}
+                  </button>
+                </div>
               )}
+
+              {tab === "no_receipt" && rules.length > 0 && (
+                <div className="mt-4 px-1">
+                  <p className="text-sm text-muted">Automatically marked when imported:</p>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    <AnimatePresence initial={false}>
+                      {rules.map((rule) => (
+                        <m.li
+                          key={rule.id}
+                          layout
+                          initial={{ opacity: 0, scale: 0.8 }}
+                          animate={{ opacity: 1, scale: 1 }}
+                          exit={{ opacity: 0, scale: 0.8 }}
+                          transition={{ type: "spring", duration: 0.3, bounce: 0.2 }}
+                          className="flex items-center gap-1 rounded-full border border-rule-strong/80 bg-card py-1 pr-1 pl-3 text-sm shadow-card"
+                        >
+                          <span className="max-w-64 truncate">
+                            {rule.field === "description" ? `“${rule.pattern}”` : rule.pattern}
+                            {rule.label ? <span className="text-muted"> · {rule.label}</span> : null}
+                          </span>
+                          <button
+                            type="button"
+                            onClick={() => void deleteRule(rule)}
+                            aria-label={`Remove rule ${rule.pattern}`}
+                            className="press grid size-6 place-items-center rounded-full text-muted hover:bg-danger-soft hover:text-danger"
+                          >
+                            <X className="size-3.5" />
+                          </button>
+                        </m.li>
+                      ))}
+                    </AnimatePresence>
+                  </ul>
+                </div>
+              )}
+
+              {tab === "missing" && billingToVisit.length > 0 && (
+                <div className="mt-4 px-1">
+                  <p className="text-sm text-muted">Download from billing pages:</p>
+                  <ul className="mt-2 flex flex-wrap gap-2">
+                    {billingToVisit.map(({ link, count }) => (
+                      <li key={link.id}>
+                        <a
+                          href={link.url}
+                          target="_blank"
+                          rel="noopener noreferrer"
+                          className="press flex h-9 items-center gap-1.5 rounded-full border border-accent/30 bg-card px-3.5 text-sm font-semibold text-accent shadow-card hover:bg-accent-soft"
+                        >
+                          {link.pattern}
+                          {count > 1 && <span className="nums text-xs font-normal opacity-70">×{count}</span>}
+                          <ExternalLink className="size-3.5" />
+                        </a>
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+
+              {tab === "missing" && groups.missing.length > 0 && (
+                <div className="mt-4 flex items-center gap-3 px-1 text-sm">
+                  {missingTotal > 0 && (
+                    <span className="text-muted">
+                      <span className="nums font-medium text-ink">{formatMoney(missingTotal, "EUR")}</span> paid without a receipt
+                    </span>
+                  )}
+                  <div className="flex-1" />
+                  <button
+                    type="button"
+                    onClick={exportMissing}
+                    className="press flex h-9 shrink-0 items-center gap-2 rounded-full border border-rule-strong/80 bg-card px-3.5 text-sm font-semibold shadow-card hover:bg-paper"
+                  >
+                    <FileSpreadsheet className="size-4" /> <span className="hidden sm:inline">Export list</span>
+                    <span className="sm:hidden">Export</span>
+                  </button>
+                </div>
+              )}
+
+              <div className="mt-4">
+                {tab === "unpaid" ? (
+                  <UnpaidList docs={unpaid} onOpen={setOpenDocId} />
+                ) : tab === "statements" ? (
+                  <StatementList docs={statements} txs={txs} onOpen={setOpenDocId} />
+                ) : (
+                  <>
+                    {list.length === 0 && (
+                      <AllDone>{tab === "missing" ? "Every payment has a receipt." : tab === "check" ? "Nothing to approve." : "Nothing here."}</AllDone>
+                    )}
+                    {/* Keyed by the filters: lines only animate away when they are handled. */}
+                    <TxList
+                      key={`${q}|${range.from}|${range.to}`}
+                      txs={list}
+                      busy={busy}
+                      docsById={docsById}
+                      suggestionFor={suggestionFor}
+                      links={links}
+                      onBilling={setBilling}
+                      onAttach={setAttachId}
+                      onOpenDoc={setOpenDocId}
+                      onLink={link}
+                      onDismiss={dismiss}
+                      dragging={dragging}
+                      onDropFile={(tx, file) => void uploadFor(tx, file)}
+                    />
+                  </>
+                )}
+              </div>
             </div>
           </>
         )}
@@ -746,20 +719,28 @@ export function BankView({
 }
 
 function BankEmptyState({ card, busy }: { card: boolean; busy: boolean }) {
-  const Icon = busy ? LoaderCircle : card ? CreditCard : Landmark;
   return (
-    <div className="ruled mt-6 flex animate-rise flex-col items-center rounded-3xl border border-dashed border-rule-strong px-6 py-16 text-center">
-      <div className="grid size-12 place-items-center rounded-2xl bg-accent text-accent-ink">
-        <Icon className={`size-6 ${busy ? "animate-spin" : ""}`} />
-      </div>
-      <p className="mt-4 text-lg font-semibold">
-        {busy ? "Reading statement…" : card ? "Add a credit card statement" : "Import a bank statement"}
-      </p>
-      <p className="mt-1 max-w-sm text-sm text-muted">
-        {card
-          ? "Upload or drop the statement PDF (or CSV). Every purchase on it is listed so you can add its receipt."
-          : "Download a CSV from your bank’s website and import it, or drop it here. Payments are matched to your receipts. Your bank is never connected."}
-      </p>
+    <EmptyState
+      icon={card ? CreditCard : Landmark}
+      behind={card ? [Receipt, FileText] : [FileSpreadsheet, Receipt]}
+      busy={busy}
+      title={busy ? "Reading statement…" : card ? "Add a credit card statement" : "Import a bank statement"}
+    >
+      {card
+        ? "Upload or drop the statement PDF (or CSV). Every purchase on it is listed so you can add its receipt."
+        : "Download a CSV from your bank’s website and import it, or drop it here. Payments are matched to your receipts. Your bank is never connected."}
+    </EmptyState>
+  );
+}
+
+// Shown once a tab is cleared; waits for the last line to finish leaving.
+function AllDone({ children }: { children: React.ReactNode }) {
+  return (
+    <div className="mt-10 flex animate-rise flex-col items-center text-center" style={{ animationDelay: "180ms" }}>
+      <span className="grid size-12 place-items-center rounded-2xl bg-accent-soft text-accent">
+        <CircleCheck className="size-6" />
+      </span>
+      <p className="mt-3 font-medium text-muted">{children}</p>
     </div>
   );
 }
@@ -793,6 +774,9 @@ function Amount({ value, currency }: { value: number; currency: string | null })
   );
 }
 
+// Lines collapse out of the list when they are handled (and slide in when they arrive).
+const COLLAPSE = { duration: 0.28, ease: [0.2, 0.8, 0.2, 1] } as const;
+
 function TxList({
   txs,
   busy,
@@ -822,158 +806,185 @@ function TxList({
 }) {
   const [dropTarget, setDropTarget] = useState<string | null>(null);
   return (
-    <div className="space-y-6">
-      {monthGroups(txs, (t) => t.booked_on).map((group) => (
-        <section key={group.month}>
-          <h3 className="mb-2 flex items-baseline gap-3 px-1 text-[0.7rem] font-semibold tracking-[0.14em] text-muted uppercase">
-            <span>{formatMonth(group.month)}</span>
-            <span className="h-px flex-1 translate-y-[-0.2em] bg-rule" aria-hidden="true" />
-          </h3>
-          <ul className="overflow-hidden rounded-2xl border border-rule bg-card">
-            {group.items.map((tx) => {
-              const suggestion = tx.status === "unmatched" ? suggestionFor.get(tx.id) : undefined;
-              const suggested = suggestion ? docsById.get(suggestion.docId) : undefined;
-              const linked = tx.document_id ? docsById.get(tx.document_id) : undefined;
-              const Direction = tx.amount < 0 ? ArrowUpRight : ArrowDownLeft;
-              const billing = tx.status === "unmatched" && tx.amount < 0 ? linkFor(tx, links) : undefined;
-              return (
-                <li
-                  key={tx.id}
-                  className={`border-b border-rule px-3 py-3 transition last:border-b-0 sm:px-4 ${
-                    dragging && dropTarget === tx.id ? "bg-accent-soft ring-2 ring-accent ring-inset" : ""
-                  }`}
-                  // A receipt dropped on an open line is attached to it.
-                  onDragOver={(e) => {
-                    if (tx.status !== "unmatched" || !e.dataTransfer.types.includes("Files")) return;
-                    e.preventDefault();
-                    setDropTarget(tx.id);
-                  }}
-                  onDragLeave={(e) => {
-                    if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget((id) => (id === tx.id ? null : id));
-                  }}
-                  onDrop={(e) => {
-                    if (tx.status !== "unmatched") return;
-                    const file = e.dataTransfer.files[0];
-                    if (!file || /\.(csv|txt|tsv)$/i.test(file.name)) return; // statements go to the page
-                    e.preventDefault();
-                    e.stopPropagation();
-                    setDropTarget(null);
-                    onDropFile(tx, file);
-                  }}
-                >
-                  <div className="flex items-center gap-3">
-                    <Direction className={`size-4 shrink-0 ${tx.amount < 0 ? "text-muted" : "text-accent"}`} aria-hidden="true" />
-                    <div className="min-w-0 flex-1">
-                      <div className="truncate font-medium">{tx.counterparty || tx.description || "—"}</div>
-                      <div className="mt-0.5 truncate text-[0.8rem] text-muted">
-                        <span className="tabular-nums">{formatDay(tx.booked_on)}</span>
-                        {tx.counterparty && tx.description ? ` · ${tx.description}` : ""}
-                      </div>
-                    </div>
-                    <Amount value={tx.amount} currency={tx.currency} />
-                  </div>
+    <div>
+      <AnimatePresence initial={false}>
+        {monthGroups(txs, (t) => t.booked_on).map((group) => (
+          <m.section
+            key={group.month}
+            initial={{ opacity: 0, height: 0 }}
+            animate={{ opacity: 1, height: "auto" }}
+            exit={{ opacity: 0, height: 0 }}
+            transition={COLLAPSE}
+            className="-mx-1 overflow-hidden px-1"
+          >
+            <div className="pb-6">
+              <h3 className="mb-2 flex items-baseline gap-3 px-1 text-[0.7rem] font-semibold tracking-[0.14em] text-muted uppercase">
+                <span>{formatMonth(group.month)}</span>
+                <span className="h-px flex-1 translate-y-[-0.2em] bg-rule" aria-hidden="true" />
+              </h3>
+              <ul className="overflow-hidden rounded-2xl border border-rule bg-card shadow-card">
+                <AnimatePresence initial={false}>
+                  {group.items.map((tx) => {
+                    const suggestion = tx.status === "unmatched" ? suggestionFor.get(tx.id) : undefined;
+                    const suggested = suggestion ? docsById.get(suggestion.docId) : undefined;
+                    const linked = tx.document_id ? docsById.get(tx.document_id) : undefined;
+                    const Direction = tx.amount < 0 ? ArrowUpRight : ArrowDownLeft;
+                    const billing = tx.status === "unmatched" && tx.amount < 0 ? linkFor(tx, links) : undefined;
+                    return (
+                      <m.li
+                        key={tx.id}
+                        initial={{ opacity: 0, height: 0 }}
+                        animate={{ opacity: 1, height: "auto" }}
+                        exit={{ opacity: 0, height: 0 }}
+                        transition={COLLAPSE}
+                        className={`overflow-hidden border-b border-rule transition-colors last:border-b-0 ${
+                          dragging && dropTarget === tx.id ? "bg-accent-soft ring-2 ring-accent ring-inset" : ""
+                        }`}
+                        // A receipt dropped on an open line is attached to it.
+                        onDragOver={(e) => {
+                          if (tx.status !== "unmatched" || !e.dataTransfer.types.includes("Files")) return;
+                          e.preventDefault();
+                          setDropTarget(tx.id);
+                        }}
+                        onDragLeave={(e) => {
+                          if (!e.currentTarget.contains(e.relatedTarget as Node | null)) setDropTarget((id) => (id === tx.id ? null : id));
+                        }}
+                        onDrop={(e) => {
+                          if (tx.status !== "unmatched") return;
+                          const file = e.dataTransfer.files[0];
+                          if (!file || /\.(csv|txt|tsv)$/i.test(file.name)) return; // statements go to the page
+                          e.preventDefault();
+                          e.stopPropagation();
+                          setDropTarget(null);
+                          onDropFile(tx, file);
+                        }}
+                      >
+                        <div className="px-3 py-3 sm:px-4">
+                          <div className="flex items-center gap-3">
+                            <span
+                              className={`grid size-9 shrink-0 place-items-center rounded-full ${
+                                tx.amount < 0 ? "bg-ink/[0.05] text-muted" : "bg-accent-soft text-accent"
+                              }`}
+                            >
+                              <Direction className="size-4" aria-hidden="true" />
+                            </span>
+                            <div className="min-w-0 flex-1">
+                              <div className="truncate font-medium">{tx.counterparty || tx.description || "—"}</div>
+                              <div className="mt-0.5 truncate text-[0.8rem] text-muted">
+                                <span className="tabular-nums">{formatDay(tx.booked_on)}</span>
+                                {tx.counterparty && tx.description ? ` · ${tx.description}` : ""}
+                              </div>
+                            </div>
+                            <Amount value={tx.amount} currency={tx.currency} />
+                          </div>
 
-                  <div className="mt-2 flex flex-wrap items-center gap-2 pl-7">
-                    {busy === tx.id ? (
-                      <LoaderCircle className="size-4 animate-spin text-muted" />
-                    ) : tx.status === "matched" ? (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => linked && onOpenDoc(linked.id)}
-                          className="flex min-w-0 items-center gap-1.5 rounded-full bg-accent-soft px-3 py-1 text-sm font-medium text-accent"
-                        >
-                          <Check className="size-3.5 shrink-0" />
-                          <span className="truncate">{linked ? docLabel(linked) : "Receipt"}</span>
-                        </button>
-                        <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Unlink">
-                          <Undo2 className="size-3.5" /> Unlink
-                        </SmallButton>
-                      </>
-                    ) : tx.status === "no_receipt" ? (
-                      <>
-                        {tx.note && <span className="rounded-full bg-ink/5 px-3 py-1 text-sm text-muted">{tx.note}</span>}
-                        <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Undo">
-                          <Undo2 className="size-3.5" /> Needs receipt
-                        </SmallButton>
-                      </>
-                    ) : suggestion && suggested ? (
-                      <>
-                        <span className="flex min-w-0 items-center gap-1.5 rounded-full border border-dashed border-accent px-3 py-1 text-sm">
-                          <Link2 className="size-3.5 shrink-0 text-accent" />
-                          <button type="button" onClick={() => onOpenDoc(suggested.id)} className="truncate font-medium hover:underline">
-                            {docLabel(suggested)}
-                          </button>
-                          <span className="nums shrink-0 text-muted">
-                            {formatDay(suggested.doc_date)}
-                            {suggested.total != null ? ` · ${formatMoney(suggested.total, suggested.currency)}` : ""}
-                          </span>
-                        </span>
-                        <button
-                          type="button"
-                          onClick={() => onLink(tx, suggested.id, "matched")}
-                          className="flex h-8 items-center gap-1.5 rounded-full bg-accent px-3 text-sm font-semibold text-accent-ink hover:bg-accent-hover"
-                        >
-                          <Check className="size-3.5" /> Match
-                        </button>
-                        <button
-                          type="button"
-                          onClick={() => onDismiss(suggestion)}
-                          aria-label="Not this one"
-                          title="Not this one"
-                          className="grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5"
-                        >
-                          <X className="size-4" />
-                        </button>
-                      </>
-                    ) : (
-                      <>
-                        <button
-                          type="button"
-                          onClick={() => onAttach(tx.id)}
-                          className="flex h-8 items-center gap-1.5 rounded-full border border-rule-strong px-3 text-sm font-semibold hover:bg-ink/5"
-                        >
-                          <Link2 className="size-3.5" /> Add {paperFor(tx)}
-                        </button>
-                        <SmallButton onClick={() => onLink(tx, null, "no_receipt")} label="No receipt needed">
-                          No {paperFor(tx)} needed
-                        </SmallButton>
-                        {billing ? (
-                          <span className="flex items-center">
-                            <a
-                              href={billing.url}
-                              target="_blank"
-                              rel="noopener noreferrer"
-                              className="flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-accent hover:bg-accent-soft"
-                            >
-                              Billing page <ExternalLink className="size-3.5" />
-                            </a>
-                            <button
-                              type="button"
-                              onClick={() => onBilling(billing)}
-                              aria-label="Edit billing page"
-                              title="Edit billing page"
-                              className="grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
-                            >
-                              <Pencil className="size-3.5" />
-                            </button>
-                          </span>
-                        ) : (
-                          tx.amount < 0 && (
-                            <SmallButton onClick={() => onBilling({ pattern: tx.counterparty || "", url: "" })} label="Add billing page">
-                              <Globe className="size-3.5" /> Add billing page
-                            </SmallButton>
-                          )
-                        )}
-                      </>
-                    )}
-                  </div>
-                </li>
-              );
-            })}
-          </ul>
-        </section>
-      ))}
+                          <div className="mt-2.5 flex min-h-8 flex-wrap items-center gap-2 sm:pl-12">
+                            {busy === tx.id ? (
+                              <span className="flex h-8 items-center gap-2 text-sm text-muted">
+                                <LoaderCircle className="size-4 animate-spin" />
+                              </span>
+                            ) : tx.status === "matched" ? (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => linked && onOpenDoc(linked.id)}
+                                  className="press flex h-8 min-w-0 items-center gap-1.5 rounded-full bg-accent-soft px-3 text-sm font-medium text-accent hover:brightness-95"
+                                >
+                                  <Check className="size-3.5 shrink-0" />
+                                  <span className="truncate">{linked ? docLabel(linked) : "Receipt"}</span>
+                                </button>
+                                <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Unlink">
+                                  <Undo2 className="size-3.5" /> Unlink
+                                </SmallButton>
+                              </>
+                            ) : tx.status === "no_receipt" ? (
+                              <>
+                                {tx.note && <span className="flex h-8 items-center rounded-full bg-ink/[0.05] px-3 text-sm text-muted">{tx.note}</span>}
+                                <SmallButton onClick={() => onLink(tx, null, "unmatched")} label="Undo">
+                                  <Undo2 className="size-3.5" /> Needs receipt
+                                </SmallButton>
+                              </>
+                            ) : suggestion && suggested ? (
+                              <>
+                                <span className="flex h-8 min-w-0 items-center gap-1.5 rounded-full border border-dashed border-accent/70 bg-accent-soft/40 px-3 text-sm">
+                                  <Link2 className="size-3.5 shrink-0 text-accent" />
+                                  <button type="button" onClick={() => onOpenDoc(suggested.id)} className="truncate font-medium hover:underline">
+                                    {docLabel(suggested)}
+                                  </button>
+                                  <span className="nums shrink-0 text-muted">
+                                    {formatDay(suggested.doc_date)}
+                                    {suggested.total != null ? ` · ${formatMoney(suggested.total, suggested.currency)}` : ""}
+                                  </span>
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => onLink(tx, suggested.id, "matched")}
+                                  className="press flex h-8 items-center gap-1.5 rounded-full bg-accent px-3.5 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover"
+                                >
+                                  <Check className="size-3.5" /> Match
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => onDismiss(suggestion)}
+                                  aria-label="Not this one"
+                                  title="Not this one"
+                                  className="press grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
+                                >
+                                  <X className="size-4" />
+                                </button>
+                              </>
+                            ) : (
+                              <>
+                                <button
+                                  type="button"
+                                  onClick={() => onAttach(tx.id)}
+                                  className="press flex h-8 items-center gap-1.5 rounded-full border border-rule-strong/80 bg-card px-3 text-sm font-semibold shadow-card hover:border-rule-strong hover:bg-paper"
+                                >
+                                  <Link2 className="size-3.5" /> Add {paperFor(tx)}
+                                </button>
+                                <SmallButton onClick={() => onLink(tx, null, "no_receipt")} label="No receipt needed">
+                                  No {paperFor(tx)} needed
+                                </SmallButton>
+                                {billing ? (
+                                  <span className="flex items-center">
+                                    <a
+                                      href={billing.url}
+                                      target="_blank"
+                                      rel="noopener noreferrer"
+                                      className="press flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-semibold text-accent hover:bg-accent-soft"
+                                    >
+                                      Billing page <ExternalLink className="size-3.5" />
+                                    </a>
+                                    <button
+                                      type="button"
+                                      onClick={() => onBilling(billing)}
+                                      aria-label="Edit billing page"
+                                      title="Edit billing page"
+                                      className="press grid size-8 place-items-center rounded-full text-muted hover:bg-ink/5 hover:text-ink"
+                                    >
+                                      <Pencil className="size-3.5" />
+                                    </button>
+                                  </span>
+                                ) : (
+                                  tx.amount < 0 && (
+                                    <SmallButton onClick={() => onBilling({ pattern: tx.counterparty || "", url: "" })} label="Add billing page">
+                                      <Globe className="size-3.5" /> Add billing page
+                                    </SmallButton>
+                                  )
+                                )}
+                              </>
+                            )}
+                          </div>
+                        </div>
+                      </m.li>
+                    );
+                  })}
+                </AnimatePresence>
+              </ul>
+            </div>
+          </m.section>
+        ))}
+      </AnimatePresence>
     </div>
   );
 }
@@ -984,7 +995,7 @@ function SmallButton({ onClick, label, children }: { onClick: () => void; label:
       type="button"
       onClick={onClick}
       title={label}
-      className="flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted hover:bg-ink/5 hover:text-ink"
+      className="press flex h-8 items-center gap-1.5 rounded-full px-3 text-sm font-medium text-muted hover:bg-ink/5 hover:text-ink"
     >
       {children}
     </button>
@@ -992,14 +1003,21 @@ function SmallButton({ onClick, label, children }: { onClick: () => void; label:
 }
 
 function UnpaidList({ docs, onOpen }: { docs: Doc[]; onOpen: (id: string) => void }) {
-  if (!docs.length) return <p className="mt-10 text-center font-medium text-muted">Every receipt has a payment.</p>;
+  if (!docs.length) return <AllDone>Every receipt has a payment.</AllDone>;
   return (
     <>
       <p className="mb-3 px-1 text-sm text-muted">Paid in cash, from another account, or not paid yet.</p>
-      <ul className="overflow-hidden rounded-2xl border border-rule bg-card">
+      <ul className="overflow-hidden rounded-2xl border border-rule bg-card shadow-card">
         {docs.map((doc) => (
           <li key={doc.id} className="border-b border-rule last:border-b-0">
-            <button type="button" onClick={() => onOpen(doc.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ink/[0.025]">
+            <button
+              type="button"
+              onClick={() => onOpen(doc.id)}
+              className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-ink/[0.025] sm:px-4"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ink/[0.05] text-muted">
+                <Receipt className="size-4" aria-hidden="true" />
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">{doc.vendor || doc.file_name}</span>
                 <span className="mt-0.5 block truncate text-[0.8rem] text-muted">
@@ -1018,20 +1036,35 @@ function UnpaidList({ docs, onOpen }: { docs: Doc[]; onOpen: (id: string) => voi
 }
 
 function StatementList({ docs, txs, onOpen }: { docs: Doc[]; txs: Transaction[]; onOpen: (id: string) => void }) {
-  if (!docs.length) return <p className="mt-10 text-center font-medium text-muted">No statements yet.</p>;
+  if (!docs.length) {
+    return (
+      <div className="mt-10 flex animate-rise flex-col items-center text-center">
+        <span className="grid size-12 place-items-center rounded-2xl bg-ink/5 text-muted">
+          <Inbox className="size-5" />
+        </span>
+        <p className="mt-3 font-medium text-muted">No statements yet.</p>
+      </div>
+    );
+  }
   return (
-    <ul className="overflow-hidden rounded-2xl border border-rule bg-card">
+    <ul className="overflow-hidden rounded-2xl border border-rule bg-card shadow-card">
       {docs.map((doc) => {
         const lines = txs.filter((t) => t.statement_id === doc.id);
         const open = lines.filter((t) => t.status === "unmatched").length;
         const paid = txs.find((t) => t.document_id === doc.id);
         return (
           <li key={doc.id} className="border-b border-rule last:border-b-0">
-            <button type="button" onClick={() => onOpen(doc.id)} className="flex w-full items-center gap-3 px-4 py-3 text-left hover:bg-ink/[0.025]">
-              <FileText className="size-4 shrink-0 text-muted" aria-hidden="true" />
+            <button
+              type="button"
+              onClick={() => onOpen(doc.id)}
+              className="flex w-full items-center gap-3 px-3 py-3 text-left transition-colors hover:bg-ink/[0.025] sm:px-4"
+            >
+              <span className="grid size-9 shrink-0 place-items-center rounded-full bg-ink/[0.05] text-muted">
+                <FileText className="size-4" aria-hidden="true" />
+              </span>
               <span className="min-w-0 flex-1">
                 <span className="block truncate font-medium">
-                  {doc.status === "processing" ? "Reading…" : `${doc.vendor || "Card"} · ${formatDay(doc.doc_date)}`}
+                  {doc.status === "processing" ? <span className="shimmer-text">Reading…</span> : `${doc.vendor || "Card"} · ${formatDay(doc.doc_date)}`}
                 </span>
                 <span className="mt-0.5 block truncate text-[0.8rem] text-muted">
                   {lines.length} {lines.length === 1 ? "line" : "lines"}

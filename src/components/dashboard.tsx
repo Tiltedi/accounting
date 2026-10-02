@@ -2,23 +2,25 @@
 
 import { useRouter } from "next/navigation";
 import { useCallback, useDeferredValue, useEffect, useMemo, useRef, useState } from "react";
-import { CalendarDays, Camera, ChevronDown, Download, Inbox, LoaderCircle, Plus, Search, Upload, X } from "lucide-react";
+import { AnimatePresence, m } from "motion/react";
+import { Camera, Download, FileText, Image as ImageIcon, Inbox, LoaderCircle, Plus, Receipt, SearchX, Upload } from "lucide-react";
 import { AccountDialog } from "@/components/account-dialog";
+import { DateChip, SearchField, SelectChip } from "@/components/controls";
 import { DateRangeDialog } from "@/components/date-range-dialog";
 import { DocumentList, type ListOrder } from "@/components/document-list";
 import { DocumentPanel } from "@/components/document-panel";
 import { DownloadDialog } from "@/components/download-dialog";
 import { DropOverlay } from "@/components/drop-overlay";
+import { EmptyState } from "@/components/empty-state";
 import { FileButton } from "@/components/file-button";
 import { InboxDialog, InboxStrip } from "@/components/inbox-dialog";
 import { AppHeader } from "@/components/app-header";
 import { pendingCounts } from "@/components/bank-view";
 import { offerMatch } from "@/components/match-offer";
-import { Logo } from "@/components/logo";
 import { ScanDialog } from "@/components/scan-dialog";
 import { toast } from "@/components/toaster";
 import { CATEGORIES } from "@/lib/categories";
-import { ALL_TIME, inRange, rangeLabel, todayISO, type DateRange } from "@/lib/dates";
+import { ALL_TIME, inRange, todayISO, type DateRange } from "@/lib/dates";
 import { findMatches, loadDismissed, type Match, type Transaction } from "@/lib/bank";
 import { approveMatches, readCardStatement } from "@/lib/bank-import";
 import { DOC_COLUMNS, compareDocs, fetchAllDocuments, type Doc } from "@/lib/documents";
@@ -118,6 +120,7 @@ export function Dashboard({
   const [scanOpen, setScanOpen] = useState(false);
   const [scanPages, setScanPages] = useState<ScanPage[]>([]);
   const [scanBusy, setScanBusy] = useState(false);
+  const [fresh, setFresh] = useState<Set<string>>(() => new Set());
   const searchInput = useRef<HTMLInputElement>(null);
   const resumed = useRef(false);
 
@@ -177,6 +180,20 @@ export function Dashboard({
     setDocs((prev) => [...prev.filter((d) => d.id !== doc.id), doc].sort(compareDocs));
   }, []);
 
+  // A document uploaded just now: its row glows in once.
+  const markFresh = useCallback((id: string) => {
+    setFresh((s) => new Set(s).add(id));
+    setTimeout(
+      () =>
+        setFresh((s) => {
+          const next = new Set(s);
+          next.delete(id);
+          return next;
+        }),
+      1500,
+    );
+  }, []);
+
   const read = useCallback(
     (id: string) => {
       setReading((s) => new Set(s).add(id));
@@ -224,6 +241,7 @@ export function Dashboard({
           try {
             const doc = await uploadDocument(supabase, await item.prepare());
             upsert(doc);
+            markFresh(doc.id);
             void read(doc.id);
           } catch (err) {
             if (err instanceof DuplicateError) {
@@ -238,7 +256,7 @@ export function Dashboard({
         });
       }
     },
-    [supabase, uploadLimit, upsert, read],
+    [supabase, uploadLimit, upsert, markFresh, read],
   );
 
   const addPickedFiles = useCallback(
@@ -527,7 +545,7 @@ export function Dashboard({
           type="button"
           onClick={() => setDialog("inbox")}
           aria-label="Import from email"
-          className="relative hidden h-10 items-center gap-2 rounded-full border border-rule-strong px-4 text-sm font-semibold hover:bg-ink/5 sm:flex"
+          className="press relative hidden h-10 items-center gap-2 rounded-full border border-rule-strong/80 bg-card px-4 text-sm font-semibold shadow-card hover:bg-paper sm:flex"
         >
           <Inbox className="size-4" /> From email
           {inbox.items.length > 0 && <InboxCount count={inbox.items.length} />}
@@ -536,7 +554,7 @@ export function Dashboard({
           accept="image/*"
           capture
           onFiles={(files) => addPhoto(files[0])}
-          className="hidden h-10 items-center gap-2 rounded-full border border-rule-strong px-4 text-sm font-semibold hover:bg-ink/5 sm:pointer-coarse:flex"
+          className="press hidden h-10 items-center gap-2 rounded-full border border-rule-strong bg-card px-4 text-sm font-semibold shadow-card hover:bg-paper sm:pointer-coarse:flex"
         >
           <Camera className="size-4" /> Scan
         </FileButton>
@@ -544,112 +562,68 @@ export function Dashboard({
           accept={ACCEPT}
           multiple
           onFiles={addPickedFiles}
-          className="hidden h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink transition hover:bg-accent-hover sm:flex"
+          className="press hidden h-10 items-center gap-2 rounded-full bg-accent px-4 text-sm font-semibold text-accent-ink shadow-raised hover:bg-accent-hover sm:flex"
         >
           <Upload className="size-4" /> Upload
         </FileButton>
       </AppHeader>
 
-      <main className="mx-auto max-w-5xl px-4 pt-4 pb-36 sm:px-6 sm:pt-6 sm:pb-20">
+      <main className="mx-auto max-w-5xl animate-page-in px-4 pt-4 pb-36 sm:px-6 sm:pt-6 sm:pb-20">
         <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
-          <div className="relative sm:order-last sm:flex-1">
-            <Search className="pointer-events-none absolute top-1/2 left-3.5 size-4 -translate-y-1/2 text-muted" />
-            <input
-              ref={searchInput}
-              type="search"
-              value={query}
-              onChange={(e) => {
-                setQuery(e.target.value);
+          <SearchField
+            inputRef={searchInput}
+            value={query}
+            onChange={(value) => {
+              setQuery(value);
+              setLimit(PAGE_SIZE);
+            }}
+            onClear={() => setQuery("")}
+            label="Search documents"
+            shortcut
+            className="sm:order-last sm:flex-1"
+          />
+          {/* Two by two on phones, one row on larger screens. */}
+          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-nowrap">
+            <DateChip range={range} onClick={() => setDialog("dates")} />
+            <SelectChip
+              label="Category"
+              value={category}
+              active={category !== ""}
+              onChange={(value) => {
+                setCategory(value);
                 setLimit(PAGE_SIZE);
               }}
-              placeholder="Search"
-              aria-label="Search documents"
-              className="h-11 w-full rounded-full border border-rule-strong bg-card pr-10 pl-10 text-base outline-none transition placeholder:text-muted focus:border-accent focus:ring-4 focus:ring-accent/15 sm:text-[0.95rem] [&::-webkit-search-cancel-button]:hidden"
-            />
-            {query ? (
-              <button
-                type="button"
-                onClick={() => setQuery("")}
-                aria-label="Clear search"
-                className="absolute top-1/2 right-1.5 grid size-8 -translate-y-1/2 place-items-center rounded-full text-muted hover:bg-ink/5"
-              >
-                <X className="size-4" />
-              </button>
-            ) : (
-              <kbd className="nums pointer-events-none absolute top-1/2 right-3.5 hidden -translate-y-1/2 rounded border border-rule-strong px-1.5 text-xs text-muted pointer-fine:block">
-                /
-              </kbd>
-            )}
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:flex sm:flex-nowrap">
-            <button
-              type="button"
-              onClick={() => setDialog("dates")}
-              className={`flex h-11 min-w-0 flex-1 items-center gap-2 rounded-full border px-4 text-[0.95rem] font-medium transition sm:flex-none ${
-                range === ALL_TIME ? "border-rule-strong bg-card hover:bg-ink/5" : "border-accent bg-accent-soft text-accent"
-              }`}
             >
-              <CalendarDays className="size-4 shrink-0" />
-              <span className="truncate">{rangeLabel(range)}</span>
-              <ChevronDown className="ml-auto size-4 shrink-0 opacity-60" />
-            </button>
-            <div className="relative min-w-0 flex-1 sm:flex-none">
-              <select
-                value={category}
-                onChange={(e) => {
-                  setCategory(e.target.value);
-                  setLimit(PAGE_SIZE);
-                }}
-                aria-label="Category"
-                className={`h-11 w-full appearance-none rounded-full border py-0 pr-9 pl-4 text-[0.95rem] font-medium outline-none transition focus:ring-4 focus:ring-accent/15 sm:w-auto ${
-                  category ? "border-accent bg-accent-soft text-accent" : "border-rule-strong bg-card hover:bg-ink/5"
-                }`}
-              >
-                <option value="">All categories</option>
-                {CATEGORIES.map((c) => (
-                  <option key={c.name}>{c.name}</option>
-                ))}
-              </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
-            </div>
-            <div className="relative min-w-0">
-              <select
-                value={status}
-                onChange={(e) => {
-                  setStatus(e.target.value as StatusFilter);
-                  setLimit(PAGE_SIZE);
-                }}
-                aria-label="Status"
-                className={`h-11 w-full appearance-none rounded-full border py-0 pr-9 pl-4 text-[0.95rem] font-medium outline-none transition focus:ring-4 focus:ring-accent/15 sm:w-auto ${
-                  status ? "border-accent bg-accent-soft text-accent" : "border-rule-strong bg-card hover:bg-ink/5"
-                }`}
-              >
-                <option value="">Any status</option>
-                <option value="unbooked">Not booked</option>
-                <option value="booked">Booked</option>
-                <option value="unpaid">No bank payment</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
-            </div>
-            <div className="relative min-w-0">
-              <select
-                value={order}
-                onChange={(e) => changeOrder(e.target.value as ListOrder)}
-                aria-label="Order"
-                className="h-11 w-full appearance-none rounded-full border border-rule-strong bg-card py-0 pr-9 pl-4 text-[0.95rem] font-medium outline-none transition hover:bg-ink/5 focus:ring-4 focus:ring-accent/15 sm:w-auto"
-              >
-                <option value="added">Recently added</option>
-                <option value="date">By document date</option>
-              </select>
-              <ChevronDown className="pointer-events-none absolute top-1/2 right-3.5 size-4 -translate-y-1/2 opacity-60" />
-            </div>
+              <option value="">All categories</option>
+              {CATEGORIES.map((c) => (
+                <option key={c.name}>{c.name}</option>
+              ))}
+            </SelectChip>
+            <SelectChip
+              label="Status"
+              value={status}
+              active={status !== ""}
+              onChange={(value) => {
+                setStatus(value as StatusFilter);
+                setLimit(PAGE_SIZE);
+              }}
+            >
+              <option value="">Any status</option>
+              <option value="unbooked">Not booked</option>
+              <option value="booked">Booked</option>
+              <option value="unpaid">No bank payment</option>
+            </SelectChip>
+            <SelectChip label="Order" value={order} active={false} onChange={(value) => changeOrder(value as ListOrder)}>
+              <option value="added">Recently added</option>
+              <option value="date">By document date</option>
+            </SelectChip>
           </div>
         </div>
 
         {inbox.items.length > 0 && <InboxStrip count={inbox.items.length} onOpen={() => setDialog("inbox")} />}
 
         {docs.length > 0 && (
-          <div className="mt-5 mb-3 flex items-center gap-3 pl-3 sm:pl-4">
+          <div className="mt-5 mb-3 flex min-h-10 items-center gap-3 pl-3 sm:pl-4">
             <input
               type="checkbox"
               checked={allSelected}
@@ -659,22 +633,25 @@ export function Dashboard({
               onChange={() => setSelected(allSelected ? new Set() : new Set(filtered.map((d) => d.id)))}
               disabled={filtered.length === 0}
               aria-label="Select all"
-              className="size-[1.1rem] shrink-0 cursor-pointer accent-(--color-accent)"
+              className="checkbox"
             />
-            <div className="flex min-w-0 flex-1 flex-wrap items-baseline gap-x-2 text-sm">
+            <div
+              key={selectedDocs.length ? "selection" : "all"}
+              className="flex min-w-0 flex-1 animate-fade-in flex-wrap items-baseline gap-x-2.5 gap-y-0.5 text-sm"
+            >
               <span className="font-semibold">{countLabel}</span>
               {totals.length > 0 && (
                 <span className="nums truncate text-muted">{totals.map((t) => formatMoney(t.total, t.currency)).join(" · ")}</span>
               )}
               {selectedDocs.length > 0 && (
                 <>
-                  <button type="button" onClick={() => setSelected(new Set())} className="font-medium text-accent hover:underline">
+                  <button type="button" onClick={() => setSelected(new Set())} className="font-semibold text-accent hover:underline">
                     Clear
                   </button>
                   <button
                     type="button"
                     onClick={() => void setBooked(selectedDocs, !selectedDocs.every((d) => d.booked_at))}
-                    className="font-medium text-accent hover:underline"
+                    className="font-semibold text-accent hover:underline"
                   >
                     {selectedDocs.every((d) => d.booked_at) ? "Mark not booked" : "Mark booked"}
                   </button>
@@ -686,7 +663,11 @@ export function Dashboard({
               type="button"
               onClick={() => (selectedDocs.length ? void download(selectedDocs, `Documents ${todayISO()}`) : setDialog("download"))}
               disabled={zipping !== null}
-              className="flex h-10 shrink-0 items-center gap-2 rounded-full border border-rule-strong bg-card px-4 text-sm font-semibold transition hover:bg-ink/5 disabled:opacity-50"
+              className={`press flex h-10 shrink-0 items-center gap-2 rounded-full px-4 text-sm font-semibold disabled:opacity-50 ${
+                selectedDocs.length
+                  ? "bg-ink text-paper shadow-raised hover:bg-ink-2"
+                  : "border border-rule-strong/80 bg-card shadow-card hover:border-rule-strong hover:bg-paper"
+              }`}
             >
               {zipping !== null ? <LoaderCircle className="size-4 animate-spin" /> : <Download className="size-4" />}
               {zipping ? <span className="nums">{zipping}</span> : selectedDocs.length ? `Download ${selectedDocs.length}` : "Download"}
@@ -694,18 +675,35 @@ export function Dashboard({
           </div>
         )}
 
-        {uploads > 0 && (
-          <div className="mb-3 flex animate-rise items-center gap-2.5 rounded-2xl border border-rule bg-card px-4 py-3 text-sm font-medium">
-            <LoaderCircle className="size-4 animate-spin text-accent" />
-            Uploading {uploads > 1 ? `${uploads} files` : ""}…
-          </div>
-        )}
+        <AnimatePresence initial={false}>
+          {uploads > 0 && (
+            <m.div
+              key="uploads"
+              initial={{ opacity: 0, height: 0 }}
+              animate={{ opacity: 1, height: "auto" }}
+              exit={{ opacity: 0, height: 0 }}
+              transition={{ duration: 0.25, ease: [0.2, 0.8, 0.2, 1] }}
+              className="overflow-hidden"
+            >
+              <div className="mb-3 flex items-center gap-2.5 rounded-2xl border border-accent/20 bg-accent-soft px-4 py-3 text-sm font-medium text-accent">
+                <LoaderCircle className="size-4 animate-spin" />
+                Uploading {uploads > 1 ? `${uploads} files` : ""}…
+              </div>
+            </m.div>
+          )}
+        </AnimatePresence>
 
         {docs.length === 0 ? (
-          <EmptyState />
+          <EmptyState icon={Receipt} behind={[ImageIcon, FileText]} title="No documents yet">
+            <span className="sm:hidden">Scan a receipt or add a PDF.</span>
+            <span className="hidden sm:inline">Drop files anywhere, or upload.</span>
+          </EmptyState>
         ) : filtered.length === 0 ? (
-          <div className="mt-10 text-center">
-            <p className="font-medium">Nothing matches.</p>
+          <div className="mt-12 flex animate-rise flex-col items-center text-center">
+            <span className="grid size-12 place-items-center rounded-2xl bg-ink/5 text-muted">
+              <SearchX className="size-5" />
+            </span>
+            <p className="mt-3 font-medium">Nothing matches.</p>
             {filtersActive && (
               <button
                 type="button"
@@ -715,7 +713,7 @@ export function Dashboard({
                   setStatus("");
                   setQuery("");
                 }}
-                className="mt-2 text-sm font-semibold text-accent hover:underline"
+                className="press mt-3 h-9 rounded-full border border-rule-strong/80 bg-card px-4 text-sm font-semibold shadow-card hover:bg-paper"
               >
                 Show everything
               </button>
@@ -728,6 +726,7 @@ export function Dashboard({
               order={order}
               selected={selected}
               reading={reading}
+              fresh={fresh}
               paid={payments}
               onToggle={toggle}
               onOpen={setOpenId}
@@ -737,7 +736,7 @@ export function Dashboard({
               <button
                 type="button"
                 onClick={() => setLimit((n) => n + PAGE_SIZE)}
-                className="mx-auto mt-6 flex h-11 items-center rounded-full border border-rule-strong bg-card px-5 text-sm font-semibold hover:bg-ink/5"
+                className="press mx-auto mt-6 flex h-11 items-center rounded-full border border-rule-strong/80 bg-card px-5 text-sm font-semibold shadow-card hover:bg-paper"
               >
                 Show more ({filtered.length - limit})
               </button>
@@ -747,13 +746,13 @@ export function Dashboard({
       </main>
 
       {/* Phone actions, in thumb reach. */}
-      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-paper via-paper/90 to-transparent px-4 pt-8 pb-[max(env(safe-area-inset-bottom),1rem)] sm:hidden">
+      <div className="pointer-events-none fixed inset-x-0 bottom-0 z-30 bg-gradient-to-t from-paper via-paper/90 to-transparent px-4 pt-10 pb-[max(env(safe-area-inset-bottom),1rem)] sm:hidden">
         <div className="pointer-events-auto mx-auto flex max-w-sm items-center gap-3">
           <button
             type="button"
             onClick={() => setDialog("inbox")}
             aria-label="Import from email"
-            className="relative grid size-14 shrink-0 place-items-center rounded-full border border-rule-strong bg-card shadow-sm"
+            className="press relative grid size-14 shrink-0 place-items-center rounded-full border border-rule bg-card shadow-raised"
           >
             <Inbox className="size-6" />
             {inbox.items.length > 0 && <InboxCount count={inbox.items.length} />}
@@ -763,7 +762,7 @@ export function Dashboard({
             multiple
             onFiles={addPickedFiles}
             label="Upload files"
-            className="grid size-14 shrink-0 place-items-center rounded-full border border-rule-strong bg-card shadow-sm"
+            className="press grid size-14 shrink-0 place-items-center rounded-full border border-rule bg-card shadow-raised"
           >
             <Plus className="size-6" />
           </FileButton>
@@ -771,7 +770,7 @@ export function Dashboard({
             accept="image/*"
             capture
             onFiles={(files) => addPhoto(files[0])}
-            className="flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full bg-accent text-[1.05rem] font-semibold text-accent-ink shadow-[0_10px_30px_-10px_var(--color-accent)]"
+            className="press flex h-14 flex-1 items-center justify-center gap-2.5 rounded-full bg-accent text-[1.05rem] font-semibold text-accent-ink shadow-[0_12px_30px_-10px_var(--color-accent)]"
           >
             <Camera className="size-5" /> Scan
           </FileButton>
@@ -853,23 +852,11 @@ export function Dashboard({
 function InboxCount({ count }: { count: number }) {
   return (
     <span
-      className="nums absolute -top-1 -right-1 grid h-5 min-w-5 place-items-center rounded-full bg-accent px-1 text-[0.7rem] leading-none font-semibold text-accent-ink"
+      key={count}
+      className="nums absolute -top-1 -right-1 grid h-5 min-w-5 animate-pop place-items-center rounded-full bg-accent px-1 text-[0.7rem] leading-none font-semibold text-accent-ink ring-2 ring-paper"
       title={`${count} to review`}
     >
       {count}
     </span>
-  );
-}
-
-function EmptyState() {
-  return (
-    <div className="ruled mt-6 flex animate-rise flex-col items-center rounded-3xl border border-dashed border-rule-strong px-6 py-16 text-center">
-      <Logo className="size-12" />
-      <p className="mt-4 text-lg font-semibold">No documents yet</p>
-      <p className="mt-1 text-sm text-muted">
-        <span className="sm:hidden">Scan a receipt or add a PDF.</span>
-        <span className="hidden sm:inline">Drop files anywhere, or upload.</span>
-      </p>
-    </div>
   );
 }
