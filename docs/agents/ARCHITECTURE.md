@@ -49,6 +49,28 @@ Components worth knowing: `match-offer.ts` (toast offering a receipt's payment w
 `inbox-dialog.tsx` (emails to review + the strip above the list),
 `toaster.tsx` (popover, top layer).
 
+## UI layer (refresh of 2026-10-02)
+
+- **Motion**: `motion` (`motion/react`), only `m.*` components inside `MotionProvider` (`LazyMotion` strict with
+  `domMax`, loaded with the page; `MotionConfig reducedMotion="user"`), mounted in `layout.tsx` around the
+  Toaster too.
+- `dialog.tsx`: native `<dialog>` (focus trap, Escape, top layer). The panel animates in and out
+  (`AnimatePresence`); the dialog closes after the exit (`onExitComplete`), `wanted` ref keeps owner-initiated
+  closes from echoing, and a late `close` event that arrives after a quick reopen is ignored. Phones: bottom
+  sheet with a grab handle; the handle and `DialogHeader` drag it down to close. Opening a dialog re-raises the
+  toaster (`raiseToaster`). Tests that look at the page right after closing a dialog must wait for it to close.
+- `toaster.tsx`: same store API; toasts spring in, reflow (`layout`) and fade out; the popover hides after the
+  last exit.
+- `tabs.tsx` (Bank/Card tabs: sliding indicator, arrow keys), `controls.tsx` (`SearchField`, `DateChip`,
+  `SelectChip`), `empty-state.tsx`, `page-skeleton.tsx` (+ `loading.tsx` per section: real header at once).
+  `app-header.tsx`: section pill with `layoutId="nav-pill"`, glides between pages.
+- Bank/Card lines and inbox emails collapse out when handled (`AnimatePresence`); the line list is keyed by
+  search/range so filtering doesn't animate.
+- `globals.css`: tokens (`raised` surface for pills, `shadow-card/raised/float`), utilities `press` (scale on
+  press) and `no-scrollbar`, classes `.checkbox`/`.switch` (native inputs drawn in CSS; tests and labels
+  unchanged), `.skeleton`, `.shimmer-text`. React `<ViewTransition>` doesn't fire on Next 16.3.7 navigations
+  (checked), so it isn't used.
+
 ## Data model (`supabase/migrations/`, types in `src/lib/database.types.ts`)
 
 - `documents` — `recurring` = covers several payments (policy, contract, loan; matched to many lines);

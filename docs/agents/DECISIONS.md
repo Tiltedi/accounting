@@ -2,6 +2,20 @@
 
 Newest first. One entry per decision: what, why, and what would change it. Append; don't rewrite history.
 
+## 2026-10-02 — UI refresh: 21st.dev patterns and motion, same functionality
+User asked for a smoother-feeling UI via the 21st.dev MCP, functionality unchanged. Kept the brand (paper/ink,
+sand accent, dark default, Instrument Sans + Plex Mono) and adapted 21st.dev components: Animated Tabs (sliding
+pill: Bank/Card tabs, header sections, Appearance), Toast (stacking, spring in, fade out), Drawer (phone
+sheets drag down to close), Empty (fanned icon tiles), Text Shimmer ("Reading…"), minimal sign-in card.
+Added the `motion` library (≈56 KB gzip more JS on Documents): exit animations (dialogs, toasts, handled bank
+lines collapse) are impractical in React without it. Features load with the page (`LazyMotion` with `domMax`):
+a lazy load re-rendered the provider during hydration and React dropped streamed HTML (hidden duplicate
+content in `#S:0`). React `<ViewTransition>` was tried for page changes but never fires on Next 16.3.7
+navigations (only in-page transitions), so the header pill uses a motion `layoutId` and pages rise in with CSS.
+Every label, role and test hook was kept; all e2e checks pass, one inbox check now waits for the drawer to
+finish closing (closing dialogs stay on screen ~0.3 s while they slide away). Revisit `ViewTransition` after a
+Next upgrade; drop `motion` only if bundle size starts to matter.
+
 ## 2026-10-01 — Sand accent instead of green
 User found the dark-mode green too intense; picked sand from three previews (soft blue, sand, lavender).
 Dark accent #cfae84 on #20170c ink; light accent #8a6a40. App icons (svg + PNGs) recoloured to match.

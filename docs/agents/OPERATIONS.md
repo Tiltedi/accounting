@@ -45,6 +45,8 @@ PostgREST, storage and the Anthropic API (canned answers by file name / prompt).
 Don't put `next-server` or `mock-server.mjs` in an ad-hoc shell command: `start.sh`/`test.sh` kill processes
 whose command line matches, including the calling shell.
 When adding a feature: extend the mock for new tables/columns and add a step to `run-bank.js` or `run.js`.
+In a fresh container `npx tsc --noEmit` fails on `LayoutProps` until route types exist: run `npx next typegen`
+(or a build) first.
 
 ## Model and cost reference
 

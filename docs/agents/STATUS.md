@@ -1,6 +1,6 @@
 # Status
 
-_Last updated: 2026-10-01 by the handoff of session 2._
+_Last updated: 2026-10-02 by the handoff of session 3._
 
 ## Live now (`main` = production, commit `6746049`)
 
@@ -24,6 +24,8 @@ _Last updated: 2026-10-01 by the handoff of session 2._
 
 ## Open items / waiting on the user
 
+- **UI refresh** (session 3) is only on branch `claude/jolly-wozniak-8dlm36`, not live. User to try the Vercel
+  preview (phone + laptop) and say "push to main". Same functionality; adds the `motion` library (~56 KB gzip).
 - Try **Download by month** on real Q3 data and say how the ZIP works in the accounting tool (folder names,
   card statements in month folders, PDFs).
 - LRS policy: link the first €604.87 payment (3 Jul) by hand if not done; check the next instalment is offered.
@@ -41,8 +43,8 @@ _Last updated: 2026-10-01 by the handoff of session 2._
 - Auto-import from trusted senders; invoices that are only a link.
 - "New" label for freshly imported bank lines; back to the requested page after login.
 
-## Last session (2026-10-01, session 2)
+## Last session (2026-10-02, session 3)
 
-Download by month; email inbox with approval (Gmail API) incl. email-as-PDF (pdf-lib); recurring documents;
-unmatch-on-delete trigger (fixed 1 stuck line); Recently-added order; From email button; dark default + sand
-accent. e2e: 3 suites, 85 checks. Every push to `main` was approved by the user.
+UI refresh only, no functional or data changes: 21st.dev-style tabs, toasts, sheets, empty states and sign-in;
+`motion` animations (dialogs slide in/out, phone sheets drag to close, nav pill glides, handled lines
+collapse); skeleton loading pages. Fixed a reopen race in `dialog.tsx`. e2e 85/85. Not pushed to `main`.
