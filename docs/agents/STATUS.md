@@ -12,6 +12,7 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 | Bank / Card | ING CSV import (dedupe by entry number), card statements → card lines, tabs Missing / To approve / Matched / No receipt needed / Receipts not in bank |
 | Matching | Approval queue (never silent). **Covers several payments** documents (policy, contract, loan) are offered for every instalment of the same payee. Deleting a document frees its lines (DB trigger) |
 | Rules, billing pages | As before (6 no-receipt rules; billing-portal links) |
+| Home | Start page: quarter check (ready for the accountant?), to-do counts, money out per month (each purchase once), spending by category, recently added. Documents is at `/documents` |
 | Look | Dark by default, sand accent; Account → Appearance (Dark / Light / Device). UI refresh with animations (session 3) |
 
 ## Production data (2026-10-01, end of session 2)
@@ -24,8 +25,7 @@ _Last updated: 2026-10-02 by the handoff of session 3._
 
 ## Open items / waiting on the user
 
-- **Home page** (dashboard: quarter check, to-do, charts, recent; Documents moved to `/documents`) is on branch
-  `claude/jolly-wozniak-8dlm36`, not live yet: user to look at the preview and say "push to live".
+- **Home page** went live 2026-10-02: ask whether the quarter check and charts look right on real data.
 - **UI refresh** (session 3) went live without the user trying the preview first: ask how it feels on the phone
   (sheets, swipe down to close, animations).
 - Try **Download by month** on real Q3 data and say how the ZIP works in the accounting tool (folder names,
