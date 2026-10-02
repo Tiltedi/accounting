@@ -117,7 +117,7 @@ export function HomeView({
           <TodoCard txs={txs} docs={docs} matches={matches} inbox={inbox} />
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-2">
-          <MonthlyChart txs={txs} docs={docs} matches={matches} today={today} />
+          <MonthlyChart txs={txs} docs={docs} today={today} />
           <CategoryChart docs={docs} today={today} />
         </div>
         <div className="mt-4 grid gap-4 lg:grid-cols-[1.2fr_1fr]">
@@ -377,9 +377,9 @@ function ViewToggle({ table, onChange }: { table: boolean; onChange: (table: boo
   );
 }
 
-function MonthlyChart({ txs, docs, matches, today }: { txs: Transaction[]; docs: Doc[]; matches: ReturnType<typeof findMatches>; today: string }) {
+function MonthlyChart({ txs, docs, today }: { txs: Transaction[]; docs: Doc[]; today: string }) {
   const [table, setTable] = useState(false);
-  const { months, foreign } = useMemo(() => monthlyOut(txs, docs, matches, lastMonths(today)), [txs, docs, matches, today]);
+  const { months, foreign } = useMemo(() => monthlyOut(txs, docs, lastMonths(today)), [txs, docs, today]);
   const total = months.reduce((sum, m) => sum + m.amount, 0);
   const top = niceMax(Math.max(...months.map((m) => m.amount)));
   const peak = months.reduce((best, m) => (m.amount > best.amount ? m : best), months[0]);

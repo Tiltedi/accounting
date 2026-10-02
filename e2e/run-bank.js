@@ -627,7 +627,13 @@ async function shot(page, name) {
     const quarter = page.getByRole("region", { name: "Ready for the accountant?" });
     await quarter.getByText("Q3 2026", { exact: true }).waitFor();
     assert((await quarter.getByRole("meter").getAttribute("aria-valuenow")) === String(percent), `Q3 ${percent}% covered`);
-    await page.getByRole("region", { name: "Money out per month" }).getByRole("listitem", { name: /^September 2026: / }).waitFor();
+    // Each purchase once: the bank line paying the card statement is left out.
+    const statements = new Set(s.docs.filter((d) => d.doc_type === "statement").map((d) => d.id));
+    const sept = s.txs.filter((t) => t.booked_on.startsWith("2026-09") && t.amount < 0 && t.currency === "EUR");
+    assert(sept.some((t) => t.source === "bank" && statements.has(t.document_id)), "fixture has a card settlement in September");
+    const out = sept.filter((t) => !(t.source === "bank" && statements.has(t.document_id))).reduce((a, t) => a - t.amount, 0);
+    const euro = new Intl.NumberFormat("en-GB", { style: "currency", currency: "EUR" }).format(out);
+    await page.getByRole("region", { name: "Money out per month" }).getByRole("listitem", { name: `September 2026: ${euro}` }).waitFor({ timeout: 5000 });
     assert((await page.getByRole("region", { name: "Spending by category" }).getByRole("listitem").count()) > 0, "categories drawn");
     await shot(page, "18-home");
     await quarter.getByRole("link", { name: "Download Q3 2026" }).click();

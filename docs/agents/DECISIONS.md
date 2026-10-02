@@ -6,8 +6,9 @@ Newest first. One entry per decision: what, why, and what would change it. Appen
 User asked for a dashboard and chose all four parts (to-do, quarter check, spending charts, recent) and a new
 start page. Home is `/`; Documents moved to `/documents` (inbox OAuth now returns there). The quarter check
 answers "can the accountant have Qn?": share of bank and card lines that are matched or need no receipt (same
-rules as the tabs, so numbers agree). Money out leaves out the bank line that pays a card statement (the card
-lines hold those purchases); charts count euros only and say how many other-currency items were skipped.
+rules as the tabs, so numbers agree). Money out never counts a purchase twice (user: "obviously"): the bank line that pays a card statement is left
+out, found by its link to the statement or else by the statement total paid within two months, whatever its
+status or dismissed suggestions (live data checked: 3 statements, each paid by one linked bank line); charts count euros only and say how many other-currency items were skipped.
 Charts are plain HTML in the sand accent, one series each, with a table view; no chart library. On phones Home is
 a house icon and the logo is hidden so four sections fit at 360 px.
 

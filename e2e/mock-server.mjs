@@ -78,6 +78,14 @@ function log(entry) {
   fs.appendFileSync(LOG, JSON.stringify({ t: Date.now(), ...entry }) + "\n");
 }
 
+// Inserts in the same millisecond would tie on created_at (parallel uploads);
+// Postgres timestamps are microseconds apart, so keep them strictly increasing.
+let lastCreated = 0;
+function nextCreatedAt() {
+  lastCreated = Math.max(Date.now(), lastCreated + 1);
+  return new Date(lastCreated).toISOString();
+}
+
 const COLUMNS = ["id", "created_at", "created_by", "status", "file_path", "file_name", "mime_type", "size_bytes", "sha256", "doc_date",
   "vendor", "description", "category", "doc_type", "invoice_number", "total", "tax", "currency", "notes", "extraction", "search"];
 
@@ -173,7 +181,7 @@ async function restTable(req, res, url, table) {
         if (prefer.includes("merge-duplicates")) { Object.assign(existing, item); saved.push(existing); continue; }
         return send(res, 409, { code: "23505", message: `duplicate ${key}` });
       }
-      const row = { id: crypto.randomUUID(), created_at: new Date().toISOString(), ...defaults(), ...item };
+      const row = { id: crypto.randomUUID(), created_at: nextCreatedAt(), ...defaults(), ...item };
       rows.push(row);
       saved.push(row);
     }

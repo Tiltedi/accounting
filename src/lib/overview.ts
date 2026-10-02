@@ -113,15 +113,39 @@ export function lastMonths(today: string, count = 12) {
   });
 }
 
-// Money out per month, bank and card together. The bank line that pays a
-// card statement is left out: the card lines already hold those purchases.
-// Only euro lines count (foreign ones are reported apart).
-export function monthlyOut(txs: Transaction[], docs: Doc[], matches: Match[], months: string[]) {
-  const statements = new Set(docs.filter((d) => d.doc_type === "statement").map((d) => d.id));
-  const settlements = new Set([
-    ...txs.filter((t) => t.document_id && statements.has(t.document_id)).map((t) => t.id),
-    ...matches.filter((m) => statements.has(m.docId)).map((m) => m.txId),
-  ]);
+// Bank lines that pay a card statement. The card lines already hold those
+// purchases, so counting both would count the spending twice. Found by the
+// link to the statement, or else by the statement's total paid from the bank
+// within two months (whatever its status or any dismissed suggestion).
+export function cardSettlements(txs: Transaction[], docs: Doc[]) {
+  const found = new Set<string>();
+  const statements = docs.filter((d) => d.doc_type === "statement");
+  const ids = new Set(statements.map((d) => d.id));
+  for (const t of txs) if (t.source === "bank" && t.document_id && ids.has(t.document_id)) found.add(t.id);
+  for (const statement of statements) {
+    if (txs.some((t) => t.document_id === statement.id && t.source === "bank") || statement.total == null) continue;
+    const lag = (t: Transaction) => (Date.parse(t.booked_on) - Date.parse(statement.doc_date)) / 86_400_000;
+    const payment = txs
+      .filter(
+        (t) =>
+          t.source === "bank" &&
+          !found.has(t.id) &&
+          !t.document_id &&
+          Math.abs(-t.amount - statement.total!) < 0.005 &&
+          t.currency === (statement.currency ?? "EUR") &&
+          lag(t) >= -7 &&
+          lag(t) <= 60,
+      )
+      .sort((a, b) => Math.abs(lag(a)) - Math.abs(lag(b)))[0];
+    if (payment) found.add(payment.id);
+  }
+  return found;
+}
+
+// Money out per month, bank and card together, each purchase once (see
+// cardSettlements). Only euro lines count (foreign ones are reported apart).
+export function monthlyOut(txs: Transaction[], docs: Doc[], months: string[]) {
+  const settlements = cardSettlements(txs, docs);
   const sums = new Map(months.map((month) => [month, 0]));
   let foreign = 0;
   for (const t of txs) {
